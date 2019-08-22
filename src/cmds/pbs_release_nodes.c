@@ -52,7 +52,8 @@
 
 #define USAGE	"usage: pbs_release_nodes [-j job_identifier] host_or_vnode1 host_or_vnode2 ...\n"
 #define USAGE2	"usage: pbs_release_nodes [-j job_identifier] -a\n"
-#define USAGE3	"       pbs_release_nodes --version\n"
+#define USAGE3	"usage: pbs_release_nodes [-j job_identifier] [-k <select string>]\n"
+#define USAGE4	"       pbs_release_nodes --version\n"
 
 int
 main(int argc, char **argv, char **envp) /* pbs_release_nodes */
@@ -65,6 +66,8 @@ main(int argc, char **argv, char **envp) /* pbs_release_nodes */
 	char job_id_out[PBS_MAXCLTJOBID];
 	char server_out[MAXSERVERNAME];
 	char rmt_server[MAXSERVERNAME];
+	char *keep_opt = NULL;
+	struct attrl *keep_attrl = NULL;
 	int  len;
 	char *node_list = NULL;
 	int connect;
@@ -72,7 +75,7 @@ main(int argc, char **argv, char **envp) /* pbs_release_nodes */
 	int k;
 	int all_opt = 0;
 
-#define GETOPT_ARGS "j:a"
+#define GETOPT_ARGS "j:k:a"
 
 	/*test for real deal or just version and exit*/
 	PRINT_VERSION_AND_EXIT(argc, argv);
@@ -90,6 +93,27 @@ main(int argc, char **argv, char **envp) /* pbs_release_nodes */
 				strncpy(job_id, optarg, PBS_MAXCLTJOBID);
 				job_id[PBS_MAXCLTJOBID-1] = '\0';
 				break;
+			case 'k':
+				{
+					int i;
+					char *erp;
+					keep_opt = optarg;
+					if ((i=set_resources(&keep_attrl, keep_opt, TRUE, &erp))) {
+						if (i > 1) {
+							pbs_prt_parse_err("pbs_release_nodes: illegal -k value\n", keep_opt,
+								(int)(erp - optarg), i);
+						} else
+							fprintf(stderr, "pbs_release_nodes: illegal -k value\n");
+						exit(2);
+					} else {
+						if( strcmp(keep_attrl->resource, "select")) {
+							fprintf(stderr, "pbs_release_nodes: only a \"select=\" string is valid in -k option\n");
+							errflg++;
+							break;
+						}
+					}
+				}
+				break;
 			case 'a':
 				all_opt = 1;
 				break;
@@ -104,12 +128,18 @@ main(int argc, char **argv, char **envp) /* pbs_release_nodes */
 		job_id[PBS_MAXCLTJOBID-1] = '\0';
 	}
 
+	if (all_opt && keep_opt) {
+		errflg++;
+		fprintf(stderr, "pbs_release_nodes: -a and -k options cannot be used together\n");
+	}
+
 	if (errflg ||
 		((optind == argc) && !all_opt) ||
 		((optind != argc) && all_opt) ) {
 		fprintf(stderr, USAGE);
 		fprintf(stderr, USAGE2);
 		fprintf(stderr, USAGE3);
+		fprintf(stderr, USAGE4);
 		exit(2);
 	}
 
@@ -128,6 +158,11 @@ main(int argc, char **argv, char **envp) /* pbs_release_nodes */
 	len = 0;
 	for (k = optind; k < argc; k++) {
 		len += (strlen(argv[k]) + 1);	/* +1 for space */
+	}
+
+	if (len && keep_opt) {
+		fprintf(stderr, "pbs_release_nodes: cannot supply node list with -k option\n");
+		exit(2);
 	}
 
 	node_list = (char *)malloc(len + 1);
@@ -159,7 +194,7 @@ main(int argc, char **argv, char **envp) /* pbs_release_nodes */
 			break;
 		}
 
-		stat = pbs_relnodesjob(connect, job_id_out, node_list, NULL);
+		stat = pbs_relnodesjob(connect, job_id_out, node_list, keep_opt);
 		if (stat && (pbs_errno == PBSE_UNKJOBID)) {
 			if (locate_job(job_id_out, server_out, rmt_server)) {
 				/*
