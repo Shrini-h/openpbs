@@ -8746,7 +8746,7 @@ free_sister_vnodes(job *pjob, char *vnodelist, char *keep_select, char *err_msg,
 	set_resc_assigned((void *)pjob, 0,  DECR);
 
 	/* re-create the job's exec_vnode based on free vnodes specs */
-	if ((rc = recreate_exec_vnode(pjob, vnodelist, err_msg,
+	if ((rc = recreate_exec_vnode(pjob, vnodelist, keep_select, err_msg,
 						err_msg_sz)) != 0) {
 		set_resc_assigned((void *)pjob, 0,  INCR);
 		return (rc);

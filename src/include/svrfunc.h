@@ -117,7 +117,7 @@ extern int update_svrlive(void);
 extern void init_socket_licenses(char *);
 extern void update_job_finish_comment(job *, int, char *);
 extern void svr_saveorpurge_finjobhist(job *);
-extern int recreate_exec_vnode(job *, char *, char *, int);
+extern int recreate_exec_vnode(job *, char *, char *, char *, int);
 extern void unset_extra_attributes(job *);
 extern int node_delete_db(struct pbsnode *);
 extern int node_recov_db_raw(void *, pbs_list_head *);
@@ -232,7 +232,7 @@ extern int   free_sister_vnodes(job *, char *, char *, char *, int, struct batch
 extern int   send_job(job *, pbs_net_t, int, int, void (*x)(struct work_task *), struct batch_request *);
 extern int   relay_to_mom(job *, struct batch_request *, void (*)(struct work_task *));
 extern int   relay_to_mom2(job *, struct batch_request *, void (*)(struct work_task *), struct work_task **);
-extern int recreate_exec_vnode(job *, char *, char *, int);
+extern int recreate_exec_vnode(job *, char *, char *, char *, int);
 extern int send_job_exec_update_to_mom(job *, char *, int, struct batch_request *);
 extern int free_sister_vnodes(job *, char *, char *, char *, int, struct batch_request *);
 extern void  indirect_target_check(struct work_task *);

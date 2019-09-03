@@ -5914,6 +5914,9 @@ send_job_exec_update_exit:
  *				freed whose parent mom is a sister mom.
  *				if NULL, releases all the sister
  *				vnodes assigned to 'pjob'
+ * @param[in]		keep_select - non-NULL means it's a select string that
+ *				describes vnodes to be kept while freeing all other vnodes
+ *				assigned to 'pjob' whose parent mom is a sister mom.
  * @param[out]  err_msg - if function returns != 0 (failure), return
  *			  any error message in this buffer.
  * @param[int]	err_msg_sz - size of 'err_msg' buf.
@@ -5922,7 +5925,7 @@ send_job_exec_update_exit:
  * @reval 1	for error
 */
 int
-recreate_exec_vnode(job *pjob, char *vnodelist, char *err_msg,
+recreate_exec_vnode(job *pjob, char *vnodelist, char *keep_select, char *err_msg,
 						int err_msg_sz)
 {
 	char	*exec_vnode = NULL;
