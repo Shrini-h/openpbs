@@ -276,6 +276,7 @@ req_relnodesjob(struct batch_request *preq)
 	int		i, offset;
 	char		*nodeslist = NULL;
 	char		msg[LOG_BUF_SIZE];
+	char		*keep_select;
 
  
 	if (preq == NULL)
@@ -341,7 +342,10 @@ req_relnodesjob(struct batch_request *preq)
 	if ((nodeslist != NULL) && (nodeslist[0] == '\0')) {
 		nodeslist = NULL;
 	}
-	rc = free_sister_vnodes(pjob, nodeslist, msg, LOG_BUF_SIZE, preq);
+
+	keep_select = preq->rq_extend;
+
+	rc = free_sister_vnodes(pjob, nodeslist, keep_select, msg, LOG_BUF_SIZE, preq);
 
 	if (rc != 0) {
 		reply_text(preq, PBSE_SYSTEM, msg);

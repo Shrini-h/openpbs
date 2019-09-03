@@ -227,14 +227,14 @@ extern int   svr_authorize_jobreq(struct batch_request *preq, job *pjob);
 extern void dup_br_for_subjob(struct batch_request *opreq, job *pjob, void (*func)(struct batch_request *, job *));
 extern void set_old_nodes(job *);
 extern int   send_job_exec_update_to_mom(job *, char *, int, struct batch_request *);
-extern int   free_sister_vnodes(job *, char *, char *, int, struct batch_request *);
+extern int   free_sister_vnodes(job *, char *, char *, char *, int, struct batch_request *);
 #ifdef	_WORK_TASK_H
 extern int   send_job(job *, pbs_net_t, int, int, void (*x)(struct work_task *), struct batch_request *);
 extern int   relay_to_mom(job *, struct batch_request *, void (*)(struct work_task *));
 extern int   relay_to_mom2(job *, struct batch_request *, void (*)(struct work_task *), struct work_task **);
 extern int recreate_exec_vnode(job *, char *, char *, int);
 extern int send_job_exec_update_to_mom(job *, char *, int, struct batch_request *);
-extern int free_sister_vnodes(job *, char *, char *, int, struct batch_request *);
+extern int free_sister_vnodes(job *, char *, char *, char *, int, struct batch_request *);
 extern void  indirect_target_check(struct work_task *);
 extern void primary_handshake(struct work_task *);
 extern void secondary_handshake(struct work_task *);
