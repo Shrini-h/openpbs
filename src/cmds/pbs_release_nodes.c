@@ -106,7 +106,7 @@ main(int argc, char **argv, char **envp) /* pbs_release_nodes */
 							fprintf(stderr, "pbs_release_nodes: illegal -k value\n");
 						exit(2);
 					} else {
-						if( strcmp(keep_attrl->resource, "select")) {
+						if(!keep_attrl || strcmp(keep_attrl->resource, "select")) {
 							fprintf(stderr, "pbs_release_nodes: only a \"select=\" string is valid in -k option\n");
 							errflg++;
 							break;
