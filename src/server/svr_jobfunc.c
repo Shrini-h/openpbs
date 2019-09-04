@@ -5944,6 +5944,7 @@ recreate_exec_vnode(job *pjob, char *vnodelist, char *keep_select, char *err_msg
 	int		rc = 1;
 	relnodes_input_t		r_input;
 	relnodes_input_vnodelist_t	r_input_vnlist;
+	relnodes_input_select_t r_input_keep_select;
 
 	if (pjob == NULL) {
 		log_err(-1, __func__, "bad job parameter");
@@ -6000,13 +6001,22 @@ recreate_exec_vnode(job *pjob, char *vnodelist, char *keep_select, char *err_msg
 	r_input.p_new_exec_host[1] = &new_exec_host2;
 	r_input.p_new_schedselect = &new_select;
 
-	relnodes_input_vnodelist_init(&r_input_vnlist);
-	r_input_vnlist.vnodelist = vnodelist;
-	r_input_vnlist.schedselect = schedselect;
-	r_input_vnlist.deallocated_nodes_orig = deallocated_execvnode;
-	r_input_vnlist.p_new_deallocated_execvnode = &new_deallocated_execvnode;
+	if (keep_select == NULL) {
+		relnodes_input_vnodelist_init(&r_input_vnlist);
+		r_input_vnlist.vnodelist = vnodelist;
+		r_input_vnlist.schedselect = schedselect;
+		r_input_vnlist.deallocated_nodes_orig = deallocated_execvnode;
+		r_input_vnlist.p_new_deallocated_execvnode = &new_deallocated_execvnode;
 
-	rc = pbs_release_nodes_given_nodelist(&r_input, &r_input_vnlist, err_msg, err_msg_sz);
+		rc = pbs_release_nodes_given_nodelist(&r_input, &r_input_vnlist, err_msg, err_msg_sz);
+	} else {
+		//TODO: validate keep_select ! try using validate_perm_res_in_select
+		relnodes_input_select_init(&r_input_keep_select);
+		r_input_keep_select.select_str = keep_select;
+		//TODO: populate with all moms: pbs_list_head	*succeeded_mom_list;
+
+		rc = pbs_release_nodes_given_select(&r_input, &r_input_keep_select, err_msg, err_msg_sz);
+	}
 
 	if (rc != 0) {
 		goto recreate_exec_vnode_exit;
