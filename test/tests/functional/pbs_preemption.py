@@ -91,7 +91,7 @@ exit 1
 
     def insert_checkpoint_script(self, chk_script):
         chk_file = self.du.create_temp_file(body=chk_script)
-        self.du.chmod(path=chk_file, mode=0755)
+        self.du.chmod(path=chk_file, mode=0o755)
         self.du.chown(path=chk_file, uid=0, gid=0, sudo=True)
         c = {'$action': 'checkpoint_abort 30 !' + chk_file + ' %sid'}
         self.mom.add_config(c)
@@ -448,6 +448,7 @@ exit 3
         # node state should be free now
         self.server.expect(NODE, {'state': 'free'}, id='vnode[4]')
 
+    @requirements(num_moms=2)
     def test_host_resource_contention(self):
         """
         Test to make sure that preemption happens when the resource in

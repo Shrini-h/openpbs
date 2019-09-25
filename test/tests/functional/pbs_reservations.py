@@ -126,7 +126,7 @@ class TestReservations(TestFunctional):
 
         a = {'resources_available.ncpus': (GT, 0)}
         free_nodes = self.server.filter(NODE, a)
-        nodes = free_nodes.values()[0]
+        nodes = list(free_nodes.values())[0]
 
         other_node = [nodes[0], nodes[1]][resv_node == nodes[0]]
 
@@ -1005,6 +1005,7 @@ class TestReservations(TestFunctional):
         self.server.expect(JOB, {'job_state': 'F', 'Exit_status': '0'},
                            extend='x', attrop=PTL_AND, id=jid3)
 
+    @requirements(num_moms=2)
     def test_advance_resv_with_multinode_job_array(self):
         """
         Test multinode job array with advance reservation

@@ -37,6 +37,7 @@
 from tests.functional import *
 
 
+@requirements(num_moms=3)
 class TestPbsExecutePrologue(TestFunctional):
     """
     This tests the feature in PBS that allows execjob_prologue hook to
@@ -230,7 +231,7 @@ class TestPbsExecutePrologue(TestFunctional):
                 'fail_action': 'offline_vnodes'}
         try:
             self.server.create_import_hook(hook_name, attr, hook_body)
-        except PbsManagerError, e:
+        except PbsManagerError as e:
             exp_err = "Can't set hook fail_action value to 'offline_vnodes':"
             exp_err += " hook event must"
             exp_err += " contain at least one of execjob_begin"

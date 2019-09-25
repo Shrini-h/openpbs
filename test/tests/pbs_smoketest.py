@@ -170,7 +170,7 @@ class SmokeTest(PBSTestSuite):
         self.server.expect(RESV, a, id=rid)
         a = {'resources_available.ncpus': (GT, 0)}
         free_nodes = self.server.filter(NODE, a)
-        nodes = free_nodes.values()[0]
+        nodes = list(free_nodes.values())[0]
         other_node = [nodes[0], nodes[1]][resv_node == nodes[0]]
         a = {'reserve_state': (MATCH_RE, 'RESV_CONFIRMED|2'),
              'resv_nodes': (MATCH_RE, re.escape(other_node))}
@@ -346,11 +346,11 @@ class SmokeTest(PBSTestSuite):
         exp_eq_val = {ATTR_used+'.ncpus': '2',
                       ATTR_used+'.cput': '00:00:15', ATTR_exit_status: '0'}
         for key in exp_eq_val:
-            self.assertEquals(exp_eq_val[key], jobs[0][key])
+            self.assertEqual(exp_eq_val[key], jobs[0][key])
         exp_noteq_val = {ATTR_used+'.walltime': '00:00:00',
                          ATTR_used+'.mem': '0kb', ATTR_used+'.cpupercent': '0'}
         for key in exp_noteq_val:
-            self.assertNotEquals(exp_noteq_val[key], jobs[0][key])
+            self.assertNotEqual(exp_noteq_val[key], jobs[0][key])
 
     def test_project_based_limits(self):
         """
@@ -395,8 +395,7 @@ class SmokeTest(PBSTestSuite):
         """
         Test for preemption
         """
-        a = {'log_filter': 2048}
-        self.scheduler.set_sched_config(a)
+        self.server.manager(MGR_CMD_SET, SCHED, {'log_events': 2047})
         a = {'resources_available.ncpus': '1'}
         self.server.manager(MGR_CMD_SET, NODE, a, self.mom.shortname)
         self.server.status(QUEUE)
@@ -462,7 +461,7 @@ class SmokeTest(PBSTestSuite):
         self.logger.info('testinfo: waiting for walltime accumulation')
         running_jobs = self.server.filter(JOB, {'job_state': 'R'})
         if running_jobs.values():
-            for _j in running_jobs.values()[0]:
+            for _j in list(running_jobs.values())[0]:
                 a = {'resources_used.walltime': (NE, '00:00:00')}
                 self.server.expect(JOB, a, id=_j, interval=1, max_attempts=30)
         j = Job(TEST_USER2)
@@ -573,7 +572,7 @@ class SmokeTest(PBSTestSuite):
         """
         a = {'resources_available.ncpus': 8}
         self.server.manager(MGR_CMD_SET, NODE, a, self.mom.shortname)
-        self.scheduler.set_sched_config({'log_filter': '2048'})
+        self.server.manager(MGR_CMD_SET, SCHED, {'log_events': 2047})
         a = {'job_sort_formula': 'ncpus'}
         self.server.manager(MGR_CMD_SET, SERVER, a)
         # purposely submitting a job that is highly unlikely to run so
@@ -588,6 +587,7 @@ class SmokeTest(PBSTestSuite):
         self.assertEqual(_f1, _f2)
         self.logger.info(str(_f1) + " = " + str(_f2) + " ... OK")
 
+    @skipOnShasta
     def test_staging(self):
         """
         Test for file staging
@@ -696,7 +696,7 @@ class SmokeTest(PBSTestSuite):
             p1jobs = [j1id, j2id, j3id]
             p2jobs = [j4id, j5id, j6id]
             jobs = [j1id, j2id, j3id, j4id, j5id, j6id]
-            job_order = map(lambda j: j.split('.')[0], p2jobs + p1jobs)
+            job_order = [j.split('.')[0] for j in p2jobs + p1jobs]
             self.logger.info(
                 'Political order: ' + ','.join(cycle.political_order))
             self.logger.info('Expected order: ' + ','.join(job_order))
@@ -745,7 +745,7 @@ class SmokeTest(PBSTestSuite):
             cycle = cycle[i]
             jobs = [jids[0], jids[3], jids[6], jids[1], jids[4], jids[7],
                     jids[2], jids[5], jids[8]]
-            job_order = map(lambda j: j.split('.')[0], jobs)
+            job_order = [j.split('.')[0] for j in jobs]
             self.logger.info(
                 'Political order: ' + ','.join(cycle.political_order))
             self.logger.info('Expected order: ' + ','.join(job_order))
@@ -943,7 +943,7 @@ class SmokeTest(PBSTestSuite):
         """
         Test job_sort_formula_threshold basic behavior
         """
-        self.scheduler.set_sched_config({'log_filter': '2048'})
+        self.server.manager(MGR_CMD_SET, SCHED, {'log_events': 2047})
         a = {'resources_available.ncpus': 1}
         self.server.manager(MGR_CMD_SET, NODE, a, self.mom.shortname)
         a = {'job_sort_formula':
@@ -1257,7 +1257,6 @@ class SmokeTest(PBSTestSuite):
         self.assertTrue('Duplicate entry' in msg[0])
         self.logger.info('Expected error: Duplicate entry in ' + msg[0] +
                          ' ...OK')
-        self.assertNotEqual(e.rc, 0)
         rc = self.server.manager(MGR_CMD_DELETE, RSC, id=self.resc_name)
         self.assertEqual(rc, 0)
         for t in self.resc_types:
@@ -1376,19 +1375,19 @@ class SmokeTest(PBSTestSuite):
                                              validate=False)
         self.scheduler.add_to_resource_group('grp2', 200, 'root', 40,
                                              validate=False)
-        self.scheduler.add_to_resource_group('pbsuser1', 101, 'grp1', 40,
+        self.scheduler.add_to_resource_group(TEST_USER1, 101, 'grp1', 40,
                                              validate=False)
-        self.scheduler.add_to_resource_group('pbsuser2', 102, 'grp1', 20,
+        self.scheduler.add_to_resource_group(TEST_USER2, 102, 'grp1', 20,
                                              validate=False)
-        self.scheduler.add_to_resource_group('pbsuser3', 201, 'grp2', 30,
+        self.scheduler.add_to_resource_group(TEST_USER3, 201, 'grp2', 30,
                                              validate=False)
-        self.scheduler.add_to_resource_group('pbsuser4', 202, 'grp2', 10,
+        self.scheduler.add_to_resource_group(TEST_USER4, 202, 'grp2', 10,
                                              validate=True)
         self.server.manager(MGR_CMD_SET, SERVER, {'scheduler_iteration': 7})
         a = {'fair_share': 'True', 'fairshare_decay_time': '24:00:00',
-             'fairshare_decay_factor': 0.5, 'fairshare_usage_res': formula,
-             'log_filter': '0'}
+             'fairshare_decay_factor': 0.5, 'fairshare_usage_res': formula}
         self.scheduler.set_sched_config(a)
+        self.server.manager(MGR_CMD_SET, SCHED, {'log_events': 4095})
 
     @skipOnCpuSet
     def test_fairshare_enhanced(self):
@@ -1398,7 +1397,8 @@ class SmokeTest(PBSTestSuite):
         rv = self.server.add_resource('foo1', 'float', 'nh')
         self.assertTrue(rv)
         # Set scheduler fairshare usage formula
-        self.setup_fs('ceil(fabs(-ncpus*(foo1/100.00)*sqrt(100)))')
+        self.setup_fs(
+            'ceil(fabs(-ncpus*(foo1/100.00)*sqrt(100)))')
         node_attr = {'resources_available.ncpus': 1,
                      'resources_available.foo1': 5000}
         self.server.manager(MGR_CMD_SET, NODE, node_attr, self.mom.shortname)
@@ -1498,6 +1498,7 @@ class SmokeTest(PBSTestSuite):
         self.assertEqual(fs4.usage, 3)
 
     @checkModule("pexpect")
+    @skipOnShasta
     def test_interactive_job(self):
         """
         Submit an interactive job
@@ -1554,3 +1555,23 @@ class SmokeTest(PBSTestSuite):
 
         for v in vnodes:
             self.assertIn(v, expected_vnodes)
+
+    def test_jobscript_max_size(self):
+        """
+        Test that if jobscript_max_size attribute is set, users can not
+        submit jobs with job script size exceeding the limit.
+        """
+        scr = []
+        scr += ['echo "This is a very long line, it will exceed 20 bytes"']
+
+        j = Job()
+        j.create_script(scr)
+
+        self.server.manager(MGR_CMD_SET, SERVER, {'jobscript_max_size': 10})
+        try:
+            self.server.submit(j)
+        except PbsSubmitError as e:
+            self.assertIn("jobscript size exceeded the jobscript_max_size",
+                          e.msg[0])
+        self.server.log_match("Req;req_reject;Reject reply code=15175",
+                              max_attempts=5)

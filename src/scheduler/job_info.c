@@ -3284,10 +3284,8 @@ find_jobs_to_preempt(status *policy, resource_resv *hjob, server_info *sinfo, in
 
 		update_universe_on_end(npolicy, pjob,  "S", NO_ALLPART);
 		rjobs_count--;
-		if (pjob->end_event != NULL) {
-				if (delete_event(nsinfo, pjob->end_event, DE_NO_FLAGS) == 0)
-					schdlog(PBSEVENT_SCHED, PBS_EVENTCLASS_JOB, LOG_INFO, pjob->name, "Failed to delete end event for job.");
-		}
+		if (pjob->end_event != NULL)
+			delete_event(nsinfo, pjob->end_event);
 
 		pjobs[j] = pjob;
 		j++;
@@ -4168,7 +4166,7 @@ formula_evaluate(char *formula, resource_resv *resresv, resource_req *resreq)
 		"ex = None\n"
 		"try:\n"
 		"\t_FORMANS_ = eval(\"%s\", globals_dict, locals())\n"
-		"except Exception, ex:"
+		"except Exception as ex:"
 		"\t_PBS_PYTHON_EXCEPTIONSTR_=str(ex)\n", formula);
 
 	PyRun_SimpleString(formula_buf);
@@ -4185,7 +4183,7 @@ formula_evaluate(char *formula, resource_resv *resresv, resource_req *resreq)
 
 	obj = PyMapping_GetItemString(dict, "_PBS_PYTHON_EXCEPTIONSTR_");
 	if (obj != NULL) {
-		str = PyString_AsString(obj);
+		str = PyUnicode_AsUTF8(obj);
 		if (str != NULL) {
 			if (strlen(str) > 0) { /* exception happened */
 				sprintf(errbuf,

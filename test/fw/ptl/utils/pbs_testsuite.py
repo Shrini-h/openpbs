@@ -54,7 +54,7 @@ from ptl.utils.pbs_cliutils import CliUtils
 from ptl.utils.pbs_dshutils import DshUtils
 from ptl.utils.pbs_logutils import PBSLogAnalyzer
 from ptl.utils.pbs_procutils import ProcMonitor
-
+from ptl.utils.pbs_testusers import *
 try:
     from ptl.utils.plugins.ptl_test_tags import tags
 except ImportError:
@@ -66,70 +66,6 @@ except ImportError:
     class SkipTest(Exception):
         pass
 
-
-# Test users/groups are expected to exist on the test systems
-# User running the tests and the test users should have passwordless sudo
-# access configured to avoid interrupted (queries for password) test runs
-
-# Groups
-TSTGRP0 = PbsGroup('tstgrp00', gid=1900)
-TSTGRP1 = PbsGroup('tstgrp01', gid=1901)
-TSTGRP2 = PbsGroup('tstgrp02', gid=1902)
-TSTGRP3 = PbsGroup('tstgrp03', gid=1903)
-TSTGRP4 = PbsGroup('tstgrp04', gid=1904)
-TSTGRP5 = PbsGroup('tstgrp05', gid=1905)
-TSTGRP6 = PbsGroup('tstgrp06', gid=1906)
-TSTGRP7 = PbsGroup('tstgrp07', gid=1907)
-GRP_PBS = PbsGroup('pbs', gid=901)
-GRP_AGT = PbsGroup('agt', gid=1146)
-ROOT_GRP = PbsGroup(grp.getgrgid(0).gr_name, gid=0)
-
-# Users
-# first group from group list is primary group of user
-TEST_USER = PbsUser('pbsuser', uid=4359, groups=[TSTGRP0])
-TEST_USER1 = PbsUser('pbsuser1', uid=4361, groups=[TSTGRP0, TSTGRP1, TSTGRP2])
-TEST_USER2 = PbsUser('pbsuser2', uid=4362, groups=[TSTGRP0, TSTGRP1, TSTGRP3])
-TEST_USER3 = PbsUser('pbsuser3', uid=4363, groups=[TSTGRP0, TSTGRP1, TSTGRP4])
-TEST_USER4 = PbsUser('pbsuser4', uid=4364, groups=[TSTGRP1, TSTGRP4, TSTGRP5])
-TEST_USER5 = PbsUser('pbsuser5', uid=4365, groups=[TSTGRP2, TSTGRP4, TSTGRP6])
-TEST_USER6 = PbsUser('pbsuser6', uid=4366, groups=[TSTGRP3, TSTGRP4, TSTGRP7])
-TEST_USER7 = PbsUser('pbsuser7', uid=4368, groups=[TSTGRP1])
-
-OTHER_USER = PbsUser('pbsother', uid=4358, groups=[TSTGRP0, TSTGRP2, GRP_PBS,
-                                                   GRP_AGT])
-PBSTEST_USER = PbsUser('pbstest', uid=4355, groups=[TSTGRP0, TSTGRP2, GRP_PBS,
-                                                    GRP_AGT])
-TST_USR = PbsUser('tstusr00', uid=11000, groups=[TSTGRP0])
-TST_USR1 = PbsUser('tstusr01', uid=11001, groups=[TSTGRP0])
-
-BUILD_USER = PbsUser('pbsbuild', uid=9000, groups=[TSTGRP0])
-DATA_USER = PbsUser('pbsdata', uid=4372, groups=[TSTGRP0])
-MGR_USER = PbsUser('pbsmgr', uid=4367, groups=[TSTGRP0])
-OPER_USER = PbsUser('pbsoper', uid=4356, groups=[TSTGRP0, TSTGRP2, GRP_PBS,
-                                                 GRP_AGT])
-ADMIN_USER = PbsUser('pbsadmin', uid=4357, groups=[TSTGRP0, TSTGRP2, GRP_PBS,
-                                                   GRP_AGT])
-PBSROOT_USER = PbsUser('pbsroot', uid=4371, groups=[TSTGRP0, TSTGRP2])
-
-ROOT_USER = PbsUser('root', uid=0, groups=[ROOT_GRP])
-
-PBS_USERS = (TEST_USER, TEST_USER1, TEST_USER2, TEST_USER3, TEST_USER4,
-             TEST_USER5, TEST_USER6, TEST_USER7, OTHER_USER, PBSTEST_USER,
-             TST_USR, TST_USR1)
-
-PBS_GROUPS = (TSTGRP0, TSTGRP1, TSTGRP2, TSTGRP3, TSTGRP4, TSTGRP5, TSTGRP6,
-              TSTGRP7, GRP_PBS, GRP_AGT)
-
-PBS_OPER_USERS = (OPER_USER,)
-
-PBS_MGR_USERS = (MGR_USER, ADMIN_USER)
-
-PBS_DATA_USERS = (DATA_USER,)
-
-PBS_ROOT_USERS = (PBSROOT_USER, ROOT_USER)
-
-PBS_BUILD_USERS = (BUILD_USER,)
-
 SETUPLOG = 'setuplog'
 TEARDOWNLOG = 'teardownlog'
 
@@ -140,11 +76,16 @@ TIMEOUT_KEY = '__testcase_timeout__'
 MINIMUM_TESTCASE_TIMEOUT = 600
 REQUIREMENTS_KEY = '__PTL_REQS_LIST__'
 
+# unit of min_ram and min_disk is GB
 default_requirements = {
     'num_servers': 1,
     'num_moms': 1,
     'num_comms': 1,
     'num_clients': 1,
+    'min_mom_ram': 1,
+    'min_mom_disk': 5,
+    'min_server_ram': 1,
+    'min_server_disk': 5,
     'no_mom_on_server': False,
     'no_comm_on_server': False,
     'no_comm_on_mom': True
@@ -212,6 +153,21 @@ def skipOnCray(function):
     return wrapper
 
 
+def skipOnShasta(function):
+    """
+    Decorator to skip a test on a ``Cray Shasta`` system
+    """
+
+    def wrapper(self, *args, **kwargs):
+        if self.mom.is_shasta():
+            self.skipTest(reason='capability not supported on Cray Shasta')
+        else:
+            function(self, *args, **kwargs)
+    wrapper.__doc__ = function.__doc__
+    wrapper.__name__ = function.__name__
+    return wrapper
+
+
 def skipOnCpuSet(function):
     """
     Decorator to skip a test on a CpuSet system
@@ -234,7 +190,7 @@ def requirements(*args, **kwargs):
     """
     def wrap_obj(obj):
         getreq = getattr(obj, REQUIREMENTS_KEY, {})
-        for name, value in kwargs.iteritems():
+        for name, value in kwargs.items():
             getreq[name] = value
         setattr(obj, REQUIREMENTS_KEY, getreq)
         return obj
@@ -247,11 +203,11 @@ def testparams(**kwargs):
     """
     def decorated(function):
         function.__doc__ += "Test Params:" + "\n\t"
-        for key, value in kwargs.iteritems():
+        for key, value in kwargs.items():
             function.__doc__ += str(key) + ' : ' + str(value) + '\n\t'
 
         def wrapper(self, *args):
-            for key, value in kwargs.iteritems():
+            for key, value in kwargs.items():
                 keyname = type(self).__name__ + "." + key
                 if keyname not in self.conf.keys():
                     self.conf[keyname] = value
@@ -295,8 +251,8 @@ class PBSServiceInstanceWrapper(dict):
     """
 
     def __init__(self, *args, **kwargs):
-        super(self.__class__, self).__init__(self, *args, **kwargs)
-        self.orderedlist = super(self.__class__, self).keys()
+        super().__init__(*args, **kwargs)
+        self.orderedlist = list(super().keys())
 
     def __setitem__(self, key, value):
         super(self.__class__, self).__setitem__(key, value)
@@ -346,16 +302,13 @@ class PBSServiceInstanceWrapper(dict):
         return iter(self.orderedlist)
 
     def host_keys(self):
-        return map(lambda h: h.split('@')[0], self.keys())
+        return [h.split('@')[0] for h in self.keys()]
 
     def keys(self):
-        return self.orderedlist
-
-    def itervalues(self):
-        return (self[key] for key in self.orderedlist)
+        return list(self.orderedlist)
 
     def values(self):
-        return [self[key] for key in self.orderedlist]
+        return list(self[key] for key in self.orderedlist)
 
 
 class setUpClassError(Exception):
@@ -561,8 +514,8 @@ class PBSTestSuite(unittest.TestCase):
         Check whether the user is exist or not
         """
         testusersexist = True
-        for u in [TEST_USER, TEST_USER1, TEST_USER2, TEST_USER3]:
-            rv = cls.du.check_user_exists(str(u))
+        for u in PBS_ALL_USERS:
+            rv = cls.du.check_user_exists(u.name, u.host, u.port)
             if not rv:
                 _msg = 'User ' + str(u) + ' does not exist!'
                 raise setUpClassError(_msg)
@@ -941,6 +894,11 @@ class PBSTestSuite(unittest.TestCase):
                 return scppath
         elif conf == "PBS_LOG_HIGHRES_TIMESTAMP":
             return "1"
+        elif conf == "PBS_PUBLIC_HOST_NAME":
+            if hostobj.platform == "shasta" and hosttype == "server":
+                return socket.gethostname()
+            else:
+                return None
 
         return None
 
@@ -1190,6 +1148,13 @@ class PBSTestSuite(unittest.TestCase):
                 new_pbsconf["PBS_LOG_HIGHRES_TIMESTAMP"] = "1"
                 restart_pbs = True
 
+            # if shasta, set PBS_PUBLIC_HOST_NAME
+            if server.platform == 'shasta':
+                localhost = socket.gethostname()
+                if new_pbsconf["PBS_PUBLIC_HOST_NAME"] != localhost:
+                    new_pbsconf["PBS_PUBLIC_HOST_NAME"] = localhost
+                    restart_pbs = True
+
             # Check if existing pbs.conf has more/less entries than the
             # default list
             if len(pbs_conf_val) != len(new_pbsconf):
@@ -1266,7 +1231,12 @@ class PBSTestSuite(unittest.TestCase):
             "PBS_LOG_HIGHRES_TIMESTAMP": None
         }
 
-        self._revert_pbsconf_server(vals_to_set)
+        server_vals_to_set = copy.deepcopy(vals_to_set)
+
+        if primary_server.platform == 'shasta':
+            server_vals_to_set["PBS_PUBLIC_HOST_NAME"] = None
+
+        self._revert_pbsconf_server(server_vals_to_set)
 
         self._revert_pbsconf_mom(primary_server, vals_to_set)
 
@@ -1322,7 +1292,7 @@ class PBSTestSuite(unittest.TestCase):
         except PbsManagerError as e:
             self.logger.error(e.msg)
         a = {ATTR_managers: (INCR, current_user + '@*,' +
-             str(MGR_USER) + '@*')}
+                             str(MGR_USER) + '@*')}
         server.manager(MGR_CMD_SET, SERVER, a, sudo=True)
 
         a1 = {ATTR_operators: (INCR, str(OPER_USER) + '@*')}
@@ -1371,7 +1341,6 @@ class PBSTestSuite(unittest.TestCase):
     def revert_mom(self, mom, force=False):
         """
         Revert the values set for mom
-
         :param mom: the MoM object whose values are to be reverted
         :type mom: MoM object
         :param force: Option to reverse forcibly
@@ -1384,54 +1353,29 @@ class PBSTestSuite(unittest.TestCase):
             msg = 'Failed to restart mom ' + mom.hostname
             self.assertTrue(mom.isUp(), msg)
         mom.pbs_version()
+        restart = False
         if ((self.revert_to_defaults and self.mom_revert_to_defaults) or
                 force):
-            rv = mom.revert_to_defaults(delvnodedefs=self.del_vnodes)
-            _msg = 'Failed to revert mom %s' % (mom.hostname)
-            self.assertTrue(rv, _msg)
-            if 'clienthost' in self.conf:
-                mom.add_config({'$clienthost': self.conf['clienthost']})
-            a = {'state': 'free', 'resources_available.ncpus': (GE, 1)}
-            nodes = self.server.counter(NODE, a, attrop=PTL_AND,
-                                        level=logging.DEBUG)
-            if not nodes:
-                try:
-                    self.server.manager(MGR_CMD_DELETE, NODE, None, '')
-                except:
-                    pass
+            # no need to delete vnodes as it is already deleted in
+            # server revert_to_defaults
+            mom.delete_pelog()
+            if mom.has_vnode_defs():
                 mom.delete_vnode_defs()
-                mom.delete_vnodes()
-                mom.restart()
-                self.logger.info('server: no nodes defined, creating one')
-                self.server.manager(MGR_CMD_CREATE, NODE, None, mom.shortname)
-        name = mom.shortname
-        if mom.platform == 'cray' or mom.platform == 'craysim':
-            # delete all nodes(@default) on first call of revert_mom
-            # and create all nodes specified by self.moms one by one
-            try:
-                if self.del_all_nodes:
-                    self.server.manager(MGR_CMD_DELETE, NODE, None, '')
-                    self.del_all_nodes = False
-            except:
-                pass
-            self.server.manager(MGR_CMD_CREATE, NODE, None, name)
+                restart = True
+            mom.config = {}
+            conf = mom.dflt_config
+            if 'clienthost' in self.conf:
+                conf.update({'$clienthost': self.conf['clienthost']})
+            mom.apply_config(conf=conf, hup=False, restart=False)
+        if restart:
+            mom.restart()
         else:
-            try:
-                self.server.status(NODE, id=name)
-            except PbsStatusError:
-                # server doesn't have node with shortname
-                # check with hostname
-                name = mom.hostname
-                try:
-                    self.server.status(NODE, id=name)
-                except PbsStatusError:
-                    # server doesn't have node for this mom yet
-                    # so create with shortname
-                    name = mom.shortname
-                    self.server.manager(MGR_CMD_CREATE, NODE, None,
-                                        mom.shortname)
-        self.server.expect(NODE, {ATTR_NODE_state: 'free'}, id=name,
-                           interval=1)
+            mom.signal('-HUP')
+        if not mom.isUp():
+            self.logger.error('mom ' + mom.shortname + ' is down after revert')
+        self.server.manager(MGR_CMD_CREATE, NODE, None, mom.shortname)
+        a = {'state': 'free', 'resources_available.ncpus': (GE, 1)}
+        self.server.expect(NODE, a, id=mom.shortname, interval=1)
         return mom
 
     def analyze_logs(self):
@@ -1553,7 +1497,7 @@ class PBSTestSuite(unittest.TestCase):
         if 'skip-teardown' in self.conf:
             return
         self.log_enter_teardown()
-        self.server.cleanup_jobs(runas=ROOT_USER)
+        self.server.cleanup_jobs()
         self.stop_proc_monitor()
 
         for server in self.servers.values():

@@ -69,19 +69,19 @@ def systemd_escape(buf):
     Escape strings for usage in system unit names
     Some distros don't provide the systemd-escape command
     """
-    if not isinstance(buf, basestring):
+    if not isinstance(buf, str):
         raise ValueError('Not a basetype string')
     ret = ''
     for i, char in enumerate(buf):
         if i < 1 and char == '.':
-            ret += '\\x' + char.encode('hex')
+            ret += '\\x' + char.encode('utf-8').hex()
             continue
         if char.isalnum() or char in '_.':
             ret += char
         elif char == '/':
             ret += '-'
         else:
-            hexval = char.encode('hex')
+            hexval = char.encode('utf-8').hex()
             for j in range(0, len(hexval), 2):
                 ret += '\\x' + hexval[j:j + 2]
     return ret
@@ -152,7 +152,7 @@ class TestCgroupsHook(TestFunctional):
         self.serverA = self.servers.values()[0].name
         self.swapctl = is_memsw_enabled(self.paths['memsw'])
         self.server.set_op_mode(PTL_CLI)
-        self.server.cleanup_jobs(extend='force')
+        self.server.cleanup_jobs()
         if not self.iscray:
             self.remove_vntype()
 
@@ -1013,7 +1013,7 @@ if %s e.job.in_ms_mom():
         self.tempfile.append(fn)
         ret = self.du.run_copy(hosts=host, src=fn,
                                dest=vntype_file, sudo=True, uid='root',
-                               gid='root', mode=0644)
+                               gid='root', mode=0o644)
         if ret['rc'] != 0:
             self.skipTest('pbs_cgroups_hook: failed to set vntype')
 
@@ -1097,6 +1097,7 @@ if %s e.job.in_ms_mom():
             log1 = "'" + host2 + "'"
         return mom1, log1
 
+    @requirements(num_moms=2)
     def test_cgroup_vntype_excluded(self):
         """
         Test to verify that cgroups are not enforced on nodes
@@ -1153,6 +1154,7 @@ if %s e.job.in_ms_mom():
         cpath = self.get_cgroup_job_dir('memory', jid2, self.hosts_list[1])
         self.assertTrue(self.is_dir(cpath, self.hosts_list[1]))
 
+    @requirements(num_moms=2)
     def test_cgroup_host_excluded(self):
         """
         Test to verify that cgroups are not enforced on nodes
@@ -1193,6 +1195,7 @@ if %s e.job.in_ms_mom():
         cpath = self.get_cgroup_job_dir('memory', jid2, self.hosts_list[1])
         self.assertTrue(self.is_dir(cpath, self.hosts_list[1]))
 
+    @requirements(num_moms=2)
     def test_cgroup_exclude_vntype_mem(self):
         """
         Test to verify that cgroups are not enforced on nodes
@@ -1261,12 +1264,10 @@ if %s e.job.in_ms_mom():
         o = j.attributes[ATTR_o]
         self.tempfile.append(o)
         # Scouring the logs for initial values takes too long
-        resc_list = ['resources_used.cput', 'resources_used.mem']
+        resc_list = ['resources_used.mem']
         if self.swapctl == 'true':
             resc_list.append('resources_used.vmem')
         qstat = self.server.status(JOB, resc_list, id=jid)
-        cput = qstat[0]['resources_used.cput']
-        self.assertEqual(cput, '00:00:00')
         mem = qstat[0]['resources_used.mem']
         match = re.match(r'(\d+)kb', mem)
         self.assertFalse(match is None)
@@ -1285,46 +1286,56 @@ if %s e.job.in_ms_mom():
         # Allow some time to pass for values to be updated
         begin = int(time.time())
         self.logger.info('Waiting for periodic hook to update usage data.')
-        time.sleep(15)
-        if self.paths['cpuacct']:
-            lines = self.moms_list[0].log_match(
-                '%s;update_job_usage: CPU usage:' %
-                jid, allmatch=True, starttime=begin)
-            usage = 0.0
-            for line in lines:
-                match = re.search(r'CPU usage: ([0-9.]+) secs', line[1])
-                if not match:
-                    continue
-                usage = float(match.groups()[0])
-                if usage > 1.0:
-                    break
-            self.assertGreater(usage, 1.0)
-        if self.paths['memory']:
-            lines = self.moms_list[0].log_match(
-                '%s;update_job_usage: Memory usage: mem=' % jid,
-                allmatch=True, max_attempts=5, starttime=begin)
-            usage = 0
-            for line in lines:
-                match = re.search(r'mem=(\d+)kb', line[1])
-                if not match:
-                    continue
-                usage = int(match.groups()[0])
-                if usage > 400000:
-                    break
-            self.assertGreater(usage, 400000, 'Max memory usage: %dkb' % usage)
-            if self.swapctl == 'true':
+        # loop to check if cput, mem, vmem are expected values
+        cput_usage = 0.0
+        mem_usage = 0
+        vmem_usage = 0
+        for count in range(3):
+            # Faster systems might have expected usage after 8 seconds
+            time.sleep(8)
+            if self.paths['cpuacct'] and cput_usage <= 1.0:
                 lines = self.moms_list[0].log_match(
-                    '%s;update_job_usage: Memory usage: vmem=' % jid,
-                    allmatch=True, max_attempts=5, starttime=begin)
-                usage = 0
+                    '%s;update_job_usage: CPU usage:' %
+                    jid, allmatch=True, starttime=begin)
                 for line in lines:
-                    match = re.search(r'vmem=(\d+)kb', line[1])
+                    match = re.search(r'CPU usage: ([0-9.]+) secs', line[1])
                     if not match:
                         continue
-                    usage = int(match.groups()[0])
-                    if usage > 400000:
+                    cput_usage = float(match.groups()[0])
+                    if cput_usage > 1.0:
                         break
-                self.assertGreater(usage, 400000)
+            if self.paths['memory'] and mem_usage <= 400000:
+                lines = self.moms_list[0].log_match(
+                    '%s;update_job_usage: Memory usage: mem=' % jid,
+                    allmatch=True, starttime=begin)
+                for line in lines:
+                    match = re.search(r'mem=(\d+)kb', line[1])
+                    if not match:
+                        continue
+                    mem_usage = int(match.groups()[0])
+                    if mem_usage > 400000:
+                        break
+                if self.swapctl == 'true' and vmem_usage <= 400000:
+                    lines = self.moms_list[0].log_match(
+                        '%s;update_job_usage: Memory usage: vmem=' % jid,
+                        allmatch=True, starttime=begin)
+                    for line in lines:
+                        match = re.search(r'vmem=(\d+)kb', line[1])
+                        if not match:
+                            continue
+                        vmem_usage = int(match.groups()[0])
+                        if vmem_usage > 400000:
+                            break
+            if cput_usage > 1.0 and mem_usage > 400000:
+                if self.swapctl == 'true':
+                    if vmem_usage > 400000:
+                        break
+                else:
+                    break
+        self.assertGreater(cput_usage, 1.0)
+        self.assertGreater(mem_usage, 400000)
+        if self.swapctl == 'true':
+            self.assertGreater(vmem_usage, 400000)
 
     def test_cgroup_cpuset_and_memory(self):
         """
@@ -1664,7 +1675,7 @@ if %s e.job.in_ms_mom():
         fdir_pbs = os.path.join(fdir, 'PtlPbs')
         if not self.du.isdir(fdir_pbs):
             self.du.mkdir(hostname=self.hosts_list[0], path=fdir_pbs,
-                          mode=0755, sudo=True)
+                          mode=0o755, sudo=True)
         # Write a PID into the tasks file for the freezer cgroup
         task_file = os.path.join(fdir_pbs, 'tasks')
         success = False
@@ -1675,7 +1686,7 @@ if %s e.job.in_ms_mom():
             ret = self.du.run_copy(hosts=self.hosts_list[0], src=fn,
                                    dest=task_file, sudo=True,
                                    uid='root', gid='root',
-                                   mode=0644)
+                                   mode=0o644)
             if ret['rc'] == 0:
                 success = True
                 break
@@ -1694,7 +1705,7 @@ if %s e.job.in_ms_mom():
         ret = self.du.run_copy(self.hosts_list[0], src=fn,
                                dest=freezer_file, sudo=True,
                                uid='root', gid='root',
-                               mode=0644)
+                               mode=0o644)
         if ret['rc'] != 0:
             self.skipTest('pbs_cgroups_hook: Failed to copy '
                           'freezer state FROZEN')
@@ -1714,7 +1725,7 @@ if %s e.job.in_ms_mom():
         ret = self.du.run_copy(self.hosts_list[0], src=fn,
                                dest=freezer_file, sudo=True,
                                uid='root', gid='root',
-                               mode=0644)
+                               mode=0o644)
         if ret['rc'] != 0:
             self.skipTest('pbs_cgroups_hook: Failed to copy '
                           'freezer state THAWED')
@@ -1732,6 +1743,7 @@ if %s e.job.in_ms_mom():
                                id=host, interval=3)
         self.assertTrue(passed)
 
+    @requirements(num_moms=2)
     def test_cgroup_cpuset_host_excluded(self):
         """
         Test to verify that cgroups subsystems are not enforced on nodes
@@ -1773,6 +1785,7 @@ if %s e.job.in_ms_mom():
         self.logger.info('Checking for %s on %s' % (cpath, self.moms_list[1]))
         self.assertTrue(self.is_dir(cpath, self.hosts_list[1]))
 
+    @requirements(num_moms=2)
     def test_cgroup_run_on_host(self):
         """
         Test to verify that the cgroup hook only runs on nodes
@@ -1912,6 +1925,7 @@ if %s e.job.in_ms_mom():
         self.assertEqual(mem_resv.value, 51200)
         self.assertEqual(mem_resv.unit, 'kb')
 
+    @requirements(num_moms=2)
     def test_cgroup_multi_node(self):
         """
         Test multi-node jobs with cgroups
@@ -1997,6 +2011,7 @@ if %s e.job.in_ms_mom():
         cpath = self.get_cgroup_job_dir('memory', subj2, ehost1)
         self.assertFalse(self.is_dir(cpath, ehost1))
 
+    @requirements(num_moms=2)
     def test_cgroup_cleanup(self):
         """
         Test that cgroups files are cleaned up after qdel
@@ -2538,6 +2553,7 @@ event.accept()
             return 1
         return 0
 
+    @requirements(num_moms=2)
     def test_cgroup_release_nodes(self):
         """
         Verify that exec_vnode values are trimmed
@@ -2597,6 +2613,7 @@ event.accept()
         jid2 = self.server.submit(j2)
         self.server.expect(JOB, {ATTR_state: 'R'}, id=jid2)
 
+    @requirements(num_moms=2)
     def test_cgroup_sismom_resize_fail(self):
         """
         Verify that exec_vnode values are trimmed
@@ -2671,6 +2688,7 @@ event.accept()
         # Check that job got requeued.
         self.server.log_match("Job;%s;Job requeued" % (jid), starttime=stime)
 
+    @requirements(num_moms=2)
     def test_cgroup_msmom_resize_fail(self):
         """
         Verify that exec_vnode values are trimmed
@@ -2739,6 +2757,7 @@ event.accept()
         # Check that job got requeued
         self.server.log_match("Job;%s;Job requeued" % (jid), starttime=stime)
 
+    @requirements(num_moms=2)
     def test_cgroup_msmom_nodes_only(self):
         """
         Verify that exec_vnode values are trimmed
@@ -2812,6 +2831,7 @@ event.accept()
         jid2 = self.server.submit(j2)
         self.server.expect(JOB, {ATTR_state: 'R'}, id=jid2)
 
+    @requirements(num_moms=3)
     def test_cgroups_abort(self):
         """
         Verify that if one of the sister mom is down then
@@ -2879,8 +2899,6 @@ event.accept()
         self.load_default_config()
         if not self.iscray:
             self.remove_vntype()
-        for mom in self.moms_list:
-            mom.delete_vnode_defs()
         events = ['execjob_begin', 'execjob_launch', 'execjob_attach',
                   'execjob_epilogue', 'execjob_end', 'exechost_startup',
                   'exechost_periodic', 'execjob_resize', 'execjob_abort']
@@ -2913,7 +2931,7 @@ event.accept()
                             self.du.run_copy(hosts=self.hosts_list[0], src=fn,
                                              dest=freezer_file, sudo=True,
                                              uid='root', gid='root',
-                                             mode=0644)
+                                             mode=0o644)
                             self.du.rm(hostname=self.hosts_list[0], path=fn)
                             cmd = ['rmdir', jpath]
                             self.logger.info('deleting jobdir %s' % cmd)

@@ -35,13 +35,14 @@
 # "PBS Professional®", and "PBS Pro™" and Altair’s logos is subject to Altair's
 # trademark licensing policies.
 
+import collections
 import copy
-import cPickle
 import datetime
 import grp
 import logging
 import os
 import pwd
+import pickle
 import random
 import re
 import socket
@@ -58,22 +59,22 @@ from operator import itemgetter
 from ptl.lib.pbs_api_to_cli import api_to_cli
 from ptl.utils.pbs_cliutils import CliUtils
 from ptl.utils.pbs_dshutils import DshUtils, PtlUtilError
-from ptl.utils.pbs_fileutils import FILE_TAIL, FileUtils
 from ptl.utils.pbs_procutils import ProcUtils
+from ptl.utils.pbs_testusers import ROOT_USER, TEST_USER, PbsUser
 
 try:
     import psycopg2
     PSYCOPG = True
-except:
+except BaseException:
     PSYCOPG = False
 
 try:
     from ptl.lib.pbs_ifl import *
     API_OK = True
-except:
+except BaseException:
     try:
         from ptl.lib.pbs_ifl_mock import *
-    except:
+    except BaseException:
         sys.stderr.write("failed to import pbs_ifl, run pbs_swigify " +
                          "to make it\n")
         raise ImportError
@@ -101,7 +102,7 @@ PBS_HOOK = MGR_OBJ_PBS_HOOK
 
 # the order of these symbols matters, see pbs_ifl.h
 (SET, UNSET, INCR, DECR, EQ, NE, GE, GT,
- LE, LT, MATCH, MATCH_RE, NOT, DFLT) = range(14)
+ LE, LT, MATCH, MATCH_RE, NOT, DFLT) = list(range(14))
 
 (PTL_OR, PTL_AND) = [0, 1]
 
@@ -270,7 +271,7 @@ class PtlConfig(object):
                 k = k.strip()
                 v = v.strip()
                 self.options[k] = v
-            except:
+            except BaseException:
                 self.logger.error('Error parsing line ' + line)
         # below two if block are for backword compatibility
         if 'PTL_EXPECT_MAX_ATTEMPTS' in self.options:
@@ -278,7 +279,7 @@ class PtlConfig(object):
             _m = self.options['PTL_MAX_ATTEMPTS']
             _e = os.environ.get('PTL_EXPECT_MAX_ATTEMPTS', _m)
             del self.options['PTL_EXPECT_MAX_ATTEMPTS']
-            self.options['PTL_MAX_ATTEMPTS'] = max([_o, _m, _e])
+            self.options['PTL_MAX_ATTEMPTS'] = max([int(_o), int(_m), int(_e)])
             _msg = 'PTL_EXPECT_MAX_ATTEMPTS is deprecated,'
             _msg += ' use PTL_MAX_ATTEMPTS instead'
             self.logger.warn(_msg)
@@ -287,7 +288,8 @@ class PtlConfig(object):
             _m = self.options['PTL_ATTEMPT_INTERVAL']
             _e = os.environ.get('PTL_EXPECT_INTERVAL', _m)
             del self.options['PTL_EXPECT_INTERVAL']
-            self.options['PTL_ATTEMPT_INTERVAL'] = max([_o, _m, _e])
+            self.options['PTL_ATTEMPT_INTERVAL'] = \
+                max([int(_o), int(_m), int(_e)])
             _msg = 'PTL_EXPECT_INTERVAL is deprecated,'
             _msg += ' use PTL_ATTEMPT_INTERVAL instead'
             self.logger.warn(_msg)
@@ -771,7 +773,7 @@ class PbsTypeList(dict):
         self.kvsep = kvsep
         self.separator = sep
         d = {}
-        as_list = map(lambda v: v.split(kvsep), value.split(sep))
+        as_list = [v.split(kvsep) for v in value.split(sep)]
         if as_list:
             for k, v in as_list:
                 d[k] = v
@@ -864,7 +866,7 @@ class PbsTypeSelect(list):
             if 'mem' in k:
                 try:
                     v = PbsTypeSize(v).value
-                except:
+                except BaseException:
                     # failed so we guessed wrong on the type
                     pass
             if isinstance(v, int) or v.isdigit():
@@ -969,13 +971,12 @@ class PbsTypeChunk(dict):
         :returns: Added chunk specification
         """
         if self.vnode == vnode:
-            self.resources = dict(self.resources.items() + resources.items())
+            self.resources = {**self.resources, **resources}
             return self
         elif len(self.vchunk) != 0:
             for chk in self.vchunk:
                 if chk.vnode == vnode:
-                    chk.resources = dict(self.resources.items() +
-                                         resources.items())
+                    chk.resources = {**self.resources, **resources}
                     return self
         chk = PbsTypeChunk(vnode, resources)
         self.vchunk.append(chk)
@@ -1057,7 +1058,7 @@ class PbsTypeExecVnode(list):
         for e in self:
             vnodes += [e.vnode]
             if e.vchunk:
-                vnodes += map(lambda n: n.vnode, e.vchunk)
+                vnodes += [n.vnode for n in e.vchunk]
 
         return list(set(vnodes))
 
@@ -1145,115 +1146,6 @@ class PbsTypeJobId(str):
         return str(self.value)
 
 
-class PbsUser(object):
-
-    """
-    The PbsUser type augments a PBS username to associate
-    it to groups to which the user belongs
-
-    :param name: The user name referenced
-    :type name: str
-    :param uid: uid of user
-    :type uid: int or None
-    :param groups: The list of PbsGroup objects the user
-                   belongs to
-    :type groups: List or None
-    """
-
-    def __init__(self, name, uid=None, groups=None):
-        self.name = name
-        if uid is not None:
-            self.uid = int(uid)
-        else:
-            self.uid = None
-        self.home = None
-        self.gid = None
-        self.shell = None
-        self.gecos = None
-
-        try:
-            _user = pwd.getpwnam(self.name)
-            self.uid = _user.pw_uid
-            self.home = _user.pw_dir
-            self.gid = _user.pw_gid
-            self.shell = _user.pw_shell
-            self.gecos = _user.pw_gecos
-        except:
-            pass
-
-        if groups is None:
-            self.groups = []
-        elif isinstance(groups, list):
-            self.groups = groups
-        else:
-            self.groups = groups.split(",")
-
-        for g in self.groups:
-            if isinstance(g, str):
-                self.groups.append(PbsGroup(g, users=[self]))
-            elif self not in g.users:
-                g.users.append(self)
-
-    def __repr__(self):
-        return str(self.name)
-
-    def __str__(self):
-        return self.__repr__()
-
-    def __int__(self):
-        return int(self.uid)
-
-
-class PbsGroup(object):
-
-    """
-    The PbsGroup type augments a PBS groupname to associate it
-    to users to which the group belongs
-
-    :param name: The group name referenced
-    :type name: str
-    :param gid: gid of group
-    :type gid: int or None
-    :param users: The list of PbsUser objects the group belongs to
-    :type users: List or None
-    """
-
-    def __init__(self, name, gid=None, users=None):
-        self.name = name
-        if gid is not None:
-            self.gid = int(gid)
-        else:
-            self.gid = None
-
-        try:
-            _group = grp.getgrnam(self.name)
-            self.gid = _group.gr_gid
-        except:
-            pass
-
-        if users is None:
-            self.users = []
-        elif isinstance(users, list):
-            self.users = users
-        else:
-            self.users = users.split(",")
-
-        for u in self.users:
-            if isinstance(u, str):
-                self.users.append(PbsUser(u, groups=[self]))
-            elif self not in u.groups:
-                u.groups.append(self)
-
-    def __repr__(self):
-        return str(self.name)
-
-    def __str__(self):
-        return self.__repr__()
-
-    def __int__(self):
-        return int(self.gid)
-
-
 class BatchUtils(object):
 
     """
@@ -1261,33 +1153,33 @@ class BatchUtils(object):
     data structures
     """
 
-    legal = "\d\w:\+=\[\]~"
-    chunks_tag = re.compile("(?P<chunk>\([\d\w:\+=\[\]~]\)[\+]?)")
-    chunk_tag = re.compile("(?P<vnode>[\w\d\[\]]+):" +
-                           "(?P<resources>[\d\w:\+=\[\]~])+\)")
+    legal = r"\d\w:\+=\[\]~"
+    chunks_tag = re.compile(r"(?P<chunk>\([\d\w:\+=\[\]~]\)[\+]?)")
+    chunk_tag = re.compile(r"(?P<vnode>[\w\d\[\]]+):" +
+                           r"(?P<resources>[\d\w:\+=\[\]~])+\)")
 
-    array_tag = re.compile("(?P<jobid>[\d]+)\[(?P<subjobid>[0-9]*)\]*" +
-                           "[.]*[(?P<server>.*)]*")
-    subjob_tag = re.compile("(?P<jobid>[\d]+)\[(?P<subjobid>[0-9]+)\]*" +
-                            "[.]*[(?P<server>.*)]*")
+    array_tag = re.compile(r"(?P<jobid>[\d]+)\[(?P<subjobid>[0-9]*)\]*" +
+                           r"[.]*[(?P<server>.*)]*")
+    subjob_tag = re.compile(r"(?P<jobid>[\d]+)\[(?P<subjobid>[0-9]+)\]*" +
+                            r"[.]*[(?P<server>.*)]*")
 
-    pbsobjname_re = re.compile("^([\w\d][\d\w\s]*:?[\s]+)" +
-                               "*(?P<name>[\w@\.\d\[\]-]+)$")
+    pbsobjname_re = re.compile(r"^([\w\d][\d\w\s]*:?[\s]+)" +
+                               r"*(?P<name>[\w@\.\d\[\]-]+)$")
     pbsobjattrval_re = re.compile(r"""
                             [\s]*(?P<attribute>[\w\d\.-]+)
                             [\s]*=[\s]*
                             (?P<value>.*)
                             [\s]*""",
                                   re.VERBOSE)
-    dt_re = '(?P<dt_from>\d\d/\d\d/\d\d\d\d \d\d:\d\d)' + \
-            '[\s]+' + \
-            '(?P<dt_to>\d\d/\d\d/\d\d\d\d \d\d:\d\d)'
+    dt_re = r'(?P<dt_from>\d\d/\d\d/\d\d\d\d \d\d:\d\d)' + \
+            r'[\s]+' + \
+            r'(?P<dt_to>\d\d/\d\d/\d\d\d\d \d\d:\d\d)'
     dt_tag = re.compile(dt_re)
-    hms_tag = re.compile('(?P<hr>\d\d):(?P<mn>\d\d):(?P<sc>\d\d)')
-    lim_tag = re.compile("(?P<limtype>[a-z_]+)[\.]*(?P<resource>[\w\d-]*)"
-                         "=[\s]*\[(?P<entity_type>[ugpo]):"
-                         "(?P<entity_name>[\w\d-]+)"
-                         "=(?P<entity_value>[\d\w]+)\][\s]*")
+    hms_tag = re.compile(r'(?P<hr>\d\d):(?P<mn>\d\d):(?P<sc>\d\d)')
+    lim_tag = re.compile(r"(?P<limtype>[a-z_]+)[\.]*(?P<resource>[\w\d-]*)"
+                         r"=[\s]*\[(?P<entity_type>[ugpo]):"
+                         r"(?P<entity_name>[\w\d-]+)"
+                         r"=(?P<entity_value>[\d\w]+)\][\s]*")
 
     def __init__(self):
         self.logger = logging.getLogger(__name__)
@@ -1485,7 +1377,7 @@ class BatchUtils(object):
                              attrs.value + '\n')
             else:
                 writer.write('\t' + attrs.name + '= ' + attrs.value + '\n')
-            attrs = attrs.next
+            attrs = attrs.__next__
 
     def display_dict(self, d, writer=sys.stdout):
         """
@@ -1518,7 +1410,7 @@ class BatchUtils(object):
         ret = []
         while bs:
             if id is not None and bs.name != id:
-                bs = bs.next
+                bs = bs.__next__
                 continue
             d = {}
             attrs = bs.attribs
@@ -1529,7 +1421,7 @@ class BatchUtils(object):
                     key = attrs.name
                 if attr_names is not None:
                     if key not in attr_names:
-                        attrs = attrs.next
+                        attrs = attrs.__next__
                         continue
                 val = attrs.value
                 if attrs.name in attr_time:
@@ -1540,11 +1432,11 @@ class BatchUtils(object):
                     d[key] = d[key] + ',' + str(val)
                 else:
                     d[key] = str(val)
-                attrs = attrs.next
+                attrs = attrs.__next__
             if len(d.keys()) > 0:
                 ret.append(d)
                 d['id'] = bs.name
-            bs = bs.next
+            bs = bs.__next__
         return ret
 
     def display_batch_status(self, bs=None, attr_names=None,
@@ -1598,7 +1490,7 @@ class BatchUtils(object):
         try:
             with open(filename, mode) as f:
                 self.display_dictlist(l, f)
-        except:
+        except BaseException:
             self.logger.error('error writing to file ' + filename)
             raise
 
@@ -1627,7 +1519,7 @@ class BatchUtils(object):
         try:
             with open(fpath, 'r') as f:
                 lines = f.readlines()
-        except Exception, e:
+        except Exception as e:
             self.logger.error('error converting list of dictionaries to ' +
                               'file ' + str(e))
             return []
@@ -1648,7 +1540,7 @@ class BatchUtils(object):
         try:
             with open(fpath, 'r') as f:
                 lines = f.readlines()
-        except:
+        except BaseException:
             self.logger.error('error converting nodes to vnode def')
             return None
 
@@ -1847,8 +1739,8 @@ class BatchUtils(object):
                     _e = len(lines) - 1
                     lines[_e] = lines[_e].strip('\r\n\t') + \
                         l[i].strip('\r\n\t')
-                elif (not l[i].startswith(' ') and i > count
-                        and l[i-count].startswith('\t')):
+                elif (not l[i].startswith(' ') and i > count and
+                      l[i-count].startswith('\t')):
                     _e = len(lines) - count
                     lines[_e] = lines[_e] + l[i]
                     if ((i+1) < len(l) and not l[i+1].startswith(('\t', ' '))):
@@ -1960,7 +1852,7 @@ class BatchUtils(object):
         try:
             with open(fpath, 'r') as f:
                 lines = f.readlines()
-        except:
+        except BaseException:
             self.logger.error('error converting file ' + fpath + ' to batch')
             return None
 
@@ -1980,7 +1872,7 @@ class BatchUtils(object):
         try:
             with open(fpath, 'w') as f:
                 self.display_batch_status(bs, writer=f)
-        except:
+        except BaseException:
             self.logger.error('error converting batch status to file')
 
     def batch_to_vnodedef(self, bs):
@@ -1998,8 +1890,8 @@ class BatchUtils(object):
                         attr.name.startswith("sharing"):
                     out += [bs.name + ": "]
                     out += [attr.name + "=" + attr.value + "\n"]
-                attr = attr.next
-            bs = bs.next
+                attr = attr.__next__
+            bs = bs.__next__
         return "".join(out)
 
     def dictlist_to_vnodedef(self, dl=None):
@@ -2187,7 +2079,7 @@ class BatchUtils(object):
         :type value: str or int
         :returns: int or float or string
         """
-        if value is None or callable(value):
+        if value is None or isinstance(value, collections.Callable):
             return value
 
         if isinstance(value, (int, float)):
@@ -2293,7 +2185,7 @@ class BatchUtils(object):
         """
         try:
             ret = time.mktime(time.strptime(st, '%a %b %d %H:%M:%S %Y'))
-        except:
+        except BaseException:
             ret = st
         return ret
 
@@ -2317,7 +2209,7 @@ class BatchUtils(object):
                                                             fmt=_f)
                 dtime_to = self.convert_datetime_to_epoch(m.group('dt_to'),
                                                           fmt=_f)
-            except:
+            except BaseException:
                 self.logger.error('error converting dedicated time')
         return (dtime_from, dtime_to)
 
@@ -2429,10 +2321,11 @@ class BatchUtils(object):
             if isinstance(attrs, list):
                 for a in attrs:
                     if 'force' in a:
-                        _c.append('-W')
-                        _c.append('force')
+                        _c.append('-Wforce')
                     if 'deletehist' in a:
                         _c.append('-x')
+                    if 'nomail' in a:
+                        _c.append('-Wsuppress_email=-1')
             return _c
 
         elif op == IFL_TERMINATE:
@@ -2735,11 +2628,12 @@ class BatchUtils(object):
         :type prefix: str
         :returns: Random string
         """
-        r = [random.choice(string.letters) for _ in range(length)]
+        r = [random.choice(string.ascii_letters) for _ in range(length)]
         r = ''.join([prefix] + r)
         if hasattr(cls, '__uniq_rstr'):
             while r in cls.__uniq_rstr:
-                r = [random.choice(string.letters) for _ in range(length)]
+                r = [random.choice(string.ascii_letters)
+                     for _ in range(length)]
                 r = ''.join([prefix] + r)
             cls.__uniq_rstr.append(r)
         else:
@@ -2842,9 +2736,9 @@ class PbsTypeFGCLimit(object):
     :returns: FGC limit entry of given format
     """
 
-    fgc_attr_pat = re.compile("(?P<ltype>[a-z_]+)[\.]*(?P<resource>[\w\d-]*)")
-    fgc_val_pat = re.compile("[\s]*\[(?P<etype>[ugpo]):(?P<ename>[\w\d-]+)"
-                             "=(?P<eval>[\d]+)\][\s]*")
+    fgc_attr_pat = re.compile(r"(?P<ltype>[a-z_]+)[\.]*(?P<resource>[\w\d-]*)")
+    fgc_val_pat = re.compile(r"[\s]*\[(?P<etype>[ugpo]):(?P<ename>[\w\d-]+)"
+                             r"=(?P<eval>[\d]+)\][\s]*")
     utils = BatchUtils()
 
     def __init__(self, attr, val):
@@ -3238,7 +3132,7 @@ class ExpectActions(object):
         """
         Get all the action
         """
-        return self.actions.values()
+        return list(self.actions.values())
 
     def get_actions_by_type(self, atype=None):
         """
@@ -3451,11 +3345,12 @@ class PBSObject(object):
         if isinstance(a, list):
             a = OrderedDict(a)
 
-        self.attributes = OrderedDict(self.dflt_attributes.items() +
-                                      self.attributes.items() + a.items())
+        self.attributes = OrderedDict(list(self.dflt_attributes.items()) +
+                                      list(self.attributes.items()) +
+                                      list(a.items()))
 
-        self.custom_attrs = OrderedDict(self.custom_attrs.items() +
-                                        a.items())
+        self.custom_attrs = OrderedDict(list(self.custom_attrs.items()) +
+                                        list(a.items()))
 
     def unset_attributes(self, attrl=[]):
         """
@@ -3553,7 +3448,7 @@ class PBSService(PBSObject):
                     self.logger.info('FQDN name ' + self.fqdn + ' differs '
                                      'from name provided ' + self.hostname)
                     self.hostname = self.fqdn
-            except:
+            except BaseException:
                 pass
         else:
             self.fqdn = self.hostname
@@ -3771,8 +3666,8 @@ class PBSService(PBSObject):
 
         if procname is not None:
             pi = self.pu.get_proc_info(self.hostname, procname)
-            if pi is not None and pi.values() and pi.values()[0]:
-                for _p in pi.values()[0]:
+            if pi is not None and pi.values() and list(pi.values())[0]:
+                for _p in list(pi.values())[0]:
                     ret = self.du.run_cmd(self.hostname, ['kill', sig, _p.pid],
                                           sudo=True)
                 return ret
@@ -3794,7 +3689,7 @@ class PBSService(PBSObject):
         if _procs:
             _pids = []
             for _p in _procs:
-                _pids.extend(map(lambda x: x.pid, _p))
+                _pids.extend([x.pid for x in _p])
             return _pids
         return None
 
@@ -4016,19 +3911,9 @@ class PBSService(PBSObject):
                     day = firstday_obj.strftime("%Y%m%d")
                     filename = os.path.join(logdir, day)
                     if n == 'ALL':
-                        if self._is_local and not sudo:
-                            with open(filename) as f:
-                                day_lines = f.readlines()
-                        else:
-                            day_lines = self.du.cat(
-                                self.hostname, filename, sudo=sudo,
-                                level=logging.DEBUG2)['out']
-                    elif self._is_local and not sudo:
-                        if tail:
-                            futils = FileUtils(filename, FILE_TAIL)
-                        else:
-                            futils = FileUtils(filename)
-                        day_lines = futils.next(n)
+                        day_lines = self.du.cat(
+                            self.hostname, filename, sudo=sudo,
+                            level=logging.DEBUG2)['out']
                     else:
                         if tail:
                             cmd = ['/usr/bin/tail']
@@ -4047,9 +3932,9 @@ class PBSService(PBSObject):
                     n = n - len(day_lines)
                     if n <= 0:
                         break
-        except:
+        except (Exception, IOError, PtlLogMatchError):
             self.logger.error('error in log_lines ')
-            traceback.print_exc()
+            self.logger.error(traceback.print_exc())
             return None
 
         return lines
@@ -4119,7 +4004,7 @@ class PBSService(PBSObject):
         """
         try:
             from ptl.utils.pbs_logutils import PBSLogUtils
-        except:
+        except BaseException:
             _msg = 'error loading ptl.utils.pbs_logutils'
             raise ImportError(_msg)
 
@@ -4175,7 +4060,7 @@ class PBSService(PBSObject):
             # an open file descriptor, we close here but ignore errors in case
             # any were raised for all irrelevant cases
             lines.close()
-        except:
+        except BaseException:
             pass
         if (rv is None and existence) or (rv is not None and not existence):
             _msg = infomsg + attemptmsg
@@ -4330,7 +4215,7 @@ class PBSService(PBSObject):
                 while True:
                     try:
                         conf = cPickle.load(f)
-                    except:
+                    except BaseException:
                         break
 
             if objtype and objtype in conf:
@@ -4341,7 +4226,7 @@ class PBSService(PBSObject):
                 for ky in [MGR_OBJ_SERVER, MGR_OBJ_SCHED, MGR_OBJ_NODE]:
                     if ky not in conf:
                         conf[ky] = {}
-                    newconf = dict(newconf.items() + conf[ky].items())
+                    newconf = {**newconf, **conf[ky]}
                 conf = newconf
 
             for k, v in conf.items():
@@ -4444,6 +4329,9 @@ class Comm(PBSService):
         }
         self.pi = PBSInitServices(hostname=self.hostname,
                                   conf=self.pbs_conf_file)
+
+    def __del__(self):
+        del self.__dict__
 
     def isUp(self):
         """
@@ -4645,7 +4533,7 @@ class Server(PBSService):
     dflt_sched_name = 'default'
 
     # this pattern is a bit relaxed to match common developer build numbers
-    version_tag = re.compile("[a-zA-Z_]*(?P<version>[\d\.]+.[\w\d\.]*)[\s]*")
+    version_tag = re.compile(r"[a-zA-Z_]*(?P<version>[\d\.]+.[\w\d\.]*)[\s]*")
 
     actions = ExpectActions()
 
@@ -5146,7 +5034,7 @@ class Server(PBSService):
             setdict[ATTR_restrict_res_to_release_on_suspend] = 'ncpus'
         if delhooks:
             if (self.platform == 'cray' or self.platform == 'craysim' or
-               self.platform == 'shasta'):
+                    self.platform == 'shasta'):
                 reverthooks = True
             else:
                 reverthooks = False
@@ -5168,7 +5056,7 @@ class Server(PBSService):
                         if 'queue' in node.keys():
                             self.manager(MGR_CMD_UNSET, NODE, 'queue',
                                          node['id'])
-                except:
+                except BaseException:
                     pass
                 self.manager(MGR_CMD_DELETE, QUEUE, id=queues)
             a = {ATTR_qtype: 'Execution',
@@ -5178,7 +5066,7 @@ class Server(PBSService):
             setdict.update({ATTR_dfltque: 'workq'})
         if delscheds:
             self.manager(MGR_CMD_LIST, SCHED)
-            for name in self.schedulers.keys():
+            for name in list(self.schedulers.keys()):
                 if name != 'default':
                     self.schedulers[name].terminate()
                     sched_log = self.schedulers[
@@ -5202,19 +5090,19 @@ class Server(PBSService):
                 if self.du.cmp(self.hostname, self.dflt_mpp_hook,
                                self.mpp_hook, sudo=True) != 0:
                     self.du.run_copy(self.hostname, self.dflt_mpp_hook,
-                                     self.mpp_hook, mode=0644, sudo=True)
+                                     self.mpp_hook, mode=0o644, sudo=True)
                     self.signal('-HUP')
             if self.platform == 'shasta':
                 dohup = False
                 if (self.du.cmp(self.hostname, self.dflt_jacs_hk,
                                 self.jacs_hk, sudo=True) != 0):
                     self.du.run_copy(self.hostname, self.dflt_jacs_hk,
-                                     self.jacs_hk, mode=0644, sudo=True)
+                                     self.jacs_hk, mode=0o644, sudo=True)
                     dohup = True
                 if self.du.cmp(self.hostname, self.dflt_jacs_cf,
                                self.jacs_cf, sudo=True) != 0:
                     self.du.run_copy(self.hostname, self.dflt_jacs_cf,
-                                     self.jacs_cf, mode=0644, sudo=True)
+                                     self.jacs_cf, mode=0o644, sudo=True)
                     dohup = True
                 if dohup:
                     self.signal('-HUP')
@@ -5245,7 +5133,7 @@ class Server(PBSService):
             try:
                 rescs = self.status(RSC)
                 rescs = [r['id'] for r in rescs]
-            except:
+            except BaseException:
                 rescs = []
             if len(rescs) > 0:
                 self.manager(MGR_CMD_DELETE, RSC, id=rescs)
@@ -5305,7 +5193,7 @@ class Server(PBSService):
         try:
             with open(outfile, mode) as f:
                 cPickle.dump(sconf, f)
-        except:
+        except BaseException:
             self.logger.error('Error processing file ' + outfile)
             return False
 
@@ -5502,11 +5390,15 @@ class Server(PBSService):
 
             obj_dict[obj_name][attr] = _res[3]
 
-        return obj_dict.values()
+        return list(obj_dict.values())
 
 #
 # Begin IFL Wrappers
 #
+
+    def __del__(self):
+        del self.__dict__
+
     def status(self, obj_type=SERVER, attrib=None, id=None,
                extend=None, level=logging.INFO, db_access=None, runas=None,
                resolve_indirectness=False, logerr=True):
@@ -5570,14 +5462,13 @@ class Server(PBSService):
             if self.schedulers[self.dflt_sched_name] is None:
                 self.schedulers[self.dflt_sched_name] = Scheduler(
                     self.hostname)
-            if 'log_filter' in self.schedulers[
-                    self.dflt_sched_name].sched_config:
-                _prev_filter = self.schedulers[
-                    self.dflt_sched_name].sched_config[
-                    'log_filter']
-                if int(_prev_filter) & 2048:
-                    self.schedulers[self.dflt_sched_name].set_sched_config(
-                        {'log_filter': 2048})
+            _prev_events = self.status(SCHED, 'log_events',
+                                       id=self.dflt_schd_name)[0]['log_events']
+
+            # Job sort formula events are logged at DEBUG2 (256)
+            if not int(_prev_events) & 256:
+                self.manager(MGR_CMD_SET, SCHED, {'log_events': 2047},
+                             id=self.dflt_schd_name)
             self.manager(MGR_CMD_SET, SERVER, {'scheduling': 'True'})
             if id is None:
                 _formulas = self.schedulers[self.dflt_sched_name].job_formula()
@@ -5587,10 +5478,9 @@ class Server(PBSService):
                         self.dflt_sched_name].job_formula(
                         jobid=id)
                 }
-            if not int(_prev_filter) & 2048:
-                self.schedulers[self.dflt_sched_name].set_sched_config(
-                    {'log_filter': int(_prev_filter)})
-
+            if not int(_prev_filter) & 256:
+                self.manager(MGR_CMD_SET, SCHED, {'log_events': _prev_events},
+                             id=self.dflt_schd_name)
             if len(bsl) == 0:
                 bsl = [{'id': id}]
             for _b in bsl:
@@ -5670,7 +5560,7 @@ class Server(PBSService):
                 try:
                     rc = self.manager(MGR_CMD_LIST, obj_type, attrib, id,
                                       runas=runas, level=level, logerr=logerr)
-                except PbsManagerError, e:
+                except PbsManagerError as e:
                     rc = e.rc
                     # PBS bug, no hooks yields a return code of 1, we ignore
                     if obj_type != HOOK:
@@ -5751,7 +5641,7 @@ class Server(PBSService):
                             v = ''
                         else:
                             v = v[1]
-                    if callable(v):
+                    if isinstance(v, collections.Callable):
                         v = ''
                     if '.' in k:
                         _r = k.split('.')[0]
@@ -5818,7 +5708,7 @@ class Server(PBSService):
                             elif obj_type == PBS_HOOK:
                                 return [h.attributes for h in
                                         self.pbshooks.values()]
-                    except:
+                    except BaseException:
                         pass
                 else:
                     bs = pbs_stathook(c, id, a, extend)
@@ -5946,7 +5836,7 @@ class Server(PBSService):
                                                   prefix='PtlPbsJobScript',
                                                   asuser=obj.username,
                                                   body=aprun_cmd)
-                    self.du.chmod(path=fn, mode=0755)
+                    self.du.chmod(path=fn, mode=0o755)
                     script = fn
             elif script is None and obj.script is not None:
                 script = obj.script
@@ -5961,11 +5851,12 @@ class Server(PBSService):
             self.logger.error(m)
             return None
 
-        if submit_dir is None:
+        if not submit_dir and self.du.get_platform() != 'shasta':
             submit_dir = pwd.getpwnam(obj.username)[5]
 
         cwd = os.getcwd()
-        os.chdir(submit_dir)
+        if submit_dir:
+            os.chdir(submit_dir)
         c = None
         # 1- Submission using the command line tools
         if self.get_op_mode() == PTL_CLI:
@@ -6205,6 +6096,7 @@ class Server(PBSService):
             prefix += ', '.join(id)
         self.logger.info(prefix)
         c = None
+        rc = 0
         if self.get_op_mode() == PTL_CLI:
             pcmd = [os.path.join(self.client_conf['PBS_EXEC'], 'bin', 'qdel')]
             if extend is not None:
@@ -6214,8 +6106,6 @@ class Server(PBSService):
                 pcmd += ['-W']
                 if attr_W != PTL_NOARG:
                     pcmd += [attr_W]
-            if id is not None:
-                pcmd += id
             if not self.default_client_pbs_conf:
                 pcmd = ['PBS_CONF_FILE=' + self.client_pbs_conf_file] + pcmd
                 as_script = True
@@ -6224,13 +6114,26 @@ class Server(PBSService):
                 as_script = True
             else:
                 as_script = False
-            ret = self.du.run_cmd(self.client, pcmd, runas=runas,
-                                  as_script=as_script, logerr=logerr,
-                                  level=logging.INFOCLI)
-            rc = ret['rc']
-            if ret['err'] != ['']:
-                self.last_error = ret['err']
-            self.last_rc = rc
+            if id is not None:
+                chunks = [id[i:i + 2000] for i in range(0, len(id), 2000)]
+                for chunk in chunks:
+                    ret = self.du.run_cmd(self.client, pcmd + chunk,
+                                          runas=runas, as_script=as_script,
+                                          logerr=logerr, level=logging.INFOCLI)
+                    rc = ret['rc']
+                    if ret['err'] != ['']:
+                        self.last_error = ret['err']
+                    self.last_rc = rc
+                    if rc != 0:
+                        break
+            else:
+                ret = self.du.run_cmd(self.client, pcmd, runas=runas,
+                                      as_script=as_script, logerr=logerr,
+                                      level=logging.INFOCLI)
+                rc = ret['rc']
+                if ret['err'] != ['']:
+                    self.last_error = ret['err']
+                self.last_rc = rc
         elif runas is not None:
             rc = self.pbs_api_as('deljob', id, user=runas, extend=extend)
         else:
@@ -6251,7 +6154,7 @@ class Server(PBSService):
                     del self.jobs[j]
         if c:
             self._disconnect(c)
-        if wait:
+        if wait and id is not None:
             for oid in id:
                 self.expect(JOB, 'queue', id=oid, op=UNSET, runas=runas,
                             level=logging.DEBUG)
@@ -6286,11 +6189,10 @@ class Server(PBSService):
             prefix += ', '.join(id)
         self.logger.info(prefix)
         c = None
+        rc = 0
         if self.get_op_mode() == PTL_CLI:
             pcmd = [os.path.join(self.client_conf['PBS_EXEC'], 'bin',
                                  'pbs_rdel')]
-            if id is not None:
-                pcmd += id
             if not self.default_client_pbs_conf:
                 pcmd = ['PBS_CONF_FILE=' + self.client_pbs_conf_file] + pcmd
                 as_script = True
@@ -6299,13 +6201,26 @@ class Server(PBSService):
                 as_script = True
             else:
                 as_script = False
-            ret = self.du.run_cmd(self.client, pcmd, runas=runas,
-                                  as_script=as_script, logerr=logerr,
-                                  level=logging.INFOCLI)
-            rc = ret['rc']
-            if ret['err'] != ['']:
-                self.last_error = ret['err']
-            self.last_rc = rc
+            if id is not None:
+                chunks = [id[i:i + 2000] for i in range(0, len(id), 2000)]
+                for chunk in chunks:
+                    ret = self.du.run_cmd(self.client, pcmd + chunk,
+                                          runas=runas, as_script=as_script,
+                                          logerr=logerr, level=logging.INFOCLI)
+                    rc = ret['rc']
+                    if ret['err'] != ['']:
+                        self.last_error = ret['err']
+                    self.last_rc = rc
+                    if rc != 0:
+                        break
+            else:
+                ret = self.du.run_cmd(self.client, pcmd, runas=runas,
+                                      as_script=as_script, logerr=logerr,
+                                      level=logging.INFOCLI)
+                rc = ret['rc']
+                if ret['err'] != ['']:
+                    self.last_error = ret['err']
+                self.last_rc = rc
         elif runas is not None:
             rc = self.pbs_api_as('delresv', id, user=runas, extend=extend)
         else:
@@ -6324,7 +6239,7 @@ class Server(PBSService):
                     del self.reservations[j]
         if c:
             self._disconnect(c)
-        if wait:
+        if wait and id is not None:
             for oid in id:
                 self.expect(RESV, 'queue', id=oid, op=UNSET, runas=runas,
                             level=logging.DEBUG)
@@ -6370,7 +6285,7 @@ class Server(PBSService):
                 obj_type[j] = RESV
                 try:
                     rc = self.delresv(j, extend, runas, logerr=logerr)
-                except PbsDelresvError, e:
+                except PbsDelresvError as e:
                     rc = e.rc
                     msg = e.msg
                     rv = e.rv
@@ -6378,7 +6293,7 @@ class Server(PBSService):
                 obj_type[j] = JOB
                 try:
                     rc = self.deljob(j, extend, runas, logerr=logerr)
-                except PbsDeljobError, e:
+                except PbsDeljobError as e:
                     rc = e.rc
                     msg = e.msg
                     rv = e.rv
@@ -7277,7 +7192,7 @@ class Server(PBSService):
 
         return rc
 
-    def runjob(self, jobid=None, location=None, async=False, extend=None,
+    def runjob(self, jobid=None, location=None, run_async=False, extend=None,
                runas=None, logerr=False):
         """
         Run a job on given nodes. Raises ``PbsRunError`` on error.
@@ -7286,9 +7201,9 @@ class Server(PBSService):
         :type jobid: str or list
         :param location: An execvnode on which to run the job
         :type location: str or None
-        :param async: If true the call will return immediately
+        :param run_async: If true the call will return immediately
                       assuming success.
-        :type async: bool
+        :type run_async: bool
         :param extend: extend options
         :param runas: run as user
         :type runas: str or None
@@ -7296,7 +7211,7 @@ class Server(PBSService):
         :type logerr: bool
         :raises: PbsRunError
         """
-        if async:
+        if run_async:
             prefix = 'Async run on ' + self.shortname
         else:
             prefix = 'run on ' + self.shortname
@@ -7317,7 +7232,7 @@ class Server(PBSService):
         c = None
         if self.get_op_mode() == PTL_CLI:
             pcmd = [os.path.join(self.client_conf['PBS_EXEC'], 'bin', 'qrun')]
-            if async:
+            if run_async:
                 pcmd += ['-a']
             if location is not None:
                 pcmd += ['-H']
@@ -7346,7 +7261,7 @@ class Server(PBSService):
                 return c
             rc = 0
             for ajob in jobid:
-                if async:
+                if run_async:
                     tmp_rc = pbs_asyrunjob(c, ajob, location, extend)
                 else:
                     tmp_rc = pbs_runjob(c, ajob, location, extend)
@@ -7909,7 +7824,7 @@ class Server(PBSService):
                 name = e0
                 r = Resource(name, rtype, flag)
                 resources[name] = r
-        except:
+        except BaseException:
             raise PbsResourceError(rc=1, rv=False,
                                    msg="error in parse_resources")
         return resources
@@ -7961,9 +7876,9 @@ class Server(PBSService):
         if _data is not None:
             fn = self.du.create_temp_file()
             with open(fn, 'w+b') as tmpfile:
-                cPickle.dump(_data, tmpfile)
+                pickle.dump(_data, tmpfile)
 
-            os.chmod(fn, 0755)
+            os.chmod(fn, 0o755)
 
             if self._is_local:
                 os.chdir(tempfile.gettempdir())
@@ -7971,8 +7886,8 @@ class Server(PBSService):
                 self.du.run_copy(self.hostname, fn, fn)
 
         if not self._is_local:
-            p_env = '"import os; print os.environ[\'PTL_EXEC\']"'
-            ret = self.du.run_cmd(self.hostname, ['python', '-c', p_env],
+            p_env = '"import os; print(os.environ[\'PTL_EXEC\'])"'
+            ret = self.du.run_cmd(self.hostname, ['python3', '-c', p_env],
                                   logerr=False)
             if ret['out']:
                 runcmd = [os.path.join(ret['out'][0], 'pbs_as')]
@@ -8117,7 +8032,7 @@ class Server(PBSService):
         operation.
 
         :param obj_type: The type of object to query, JOB, SERVER,
-                         SCHEDULER, QUEUE NODE
+                         SCHEDULER, QUEUE, NODE
         :type obj_type: str
         :param attrib: Attributes to query, can be a string, a list,
                        or a dict
@@ -8227,10 +8142,10 @@ class Server(PBSService):
                 attrs_to_ignore.append(k)
                 continue
             msg += [k, PTL_OP_TO_STR[operator].strip()]
-            if callable(val):
+            if isinstance(val, collections.Callable):
                 msg += ['callable(' + val.__name__ + ')']
                 if args is not None:
-                    msg.extend(map(lambda x: str(x), args))
+                    msg.extend([str(x) for x in args])
             else:
                 msg += [str(val)]
             msg += [PTL_ATTROP_TO_STR[attrop]]
@@ -8311,7 +8226,7 @@ class Server(PBSService):
                     # Sometimes users provide the wrong case for attributes
                     # Convert to lowercase and compare
                     attrs_lower = {
-                        ks.lower(): [ks, vs] for ks, vs in stat.iteritems()}
+                        ks.lower(): [ks, vs] for ks, vs in stat.items()}
                     k_lower = k.lower()
                     if k_lower not in attrs_lower:
                         self.logger.error("Attribute %s not found" % k)
@@ -8335,7 +8250,7 @@ class Server(PBSService):
 
                 # functions/methods are invoked and their return value
                 # used on expect
-                if callable(v):
+                if isinstance(v, collections.Callable):
                     if varargs is not None:
                         rv = v(stat_v, *varargs)
                     else:
@@ -8411,107 +8326,98 @@ class Server(PBSService):
             return True
         return False
 
-    def cleanup_jobs(self, extend=None, runas=None):
+    def cleanup_jobs(self):
         """
         Helper function to delete all jobs.
         By default this method will determine whether
         job_history_enable is on and will cleanup all history
         jobs. Specifying an extend parameter could override
         this behavior.
-
-        :param runas: Clean the job as
-        :type runas: str or None
         """
-        delete_xt = 'force'
+        delete_xt = 'nomailforce'
         select_xt = None
         if self.is_history_enabled():
             delete_xt += 'deletehist'
             select_xt = 'x'
-        job_ids = self.select(extend=select_xt)
+        jobs = self.status(JOB, extend=select_xt)
+        job_ids = sorted(list(set([x['id'] for x in jobs])))
+        host_pid_map = {}
+        for job in jobs:
+            exec_host = job.get('exec_host', None)
+            if not exec_host or 'session_id' not in job:
+                continue
+            _host = exec_host.split('/')[0].split(':')[0]
+            if _host not in host_pid_map:
+                host_pid_map.setdefault(_host, [])
+            host_pid_map[_host].append(job['session_id'])
 
         # Turn off scheduling so jobs don't start when trying to
         # delete. Restore the orignial scheduling state
         # once jobs are deleted.
-        sched_state = {}
-        for sc in self.schedulers:
-            sched_state[sc] = self.status(
-                SCHED, {'scheduling'},
-                id=self.schedulers[sc].sc_name)[0]['scheduling']
-            # runas is required here because some tests remove current user
-            # from managers list
-            self.manager(MGR_CMD_SET, SCHED, {'scheduling': 'False'},
-                         id=self.schedulers[sc].sc_name, runas='root')
-        num_jobs = len(job_ids)
-        if num_jobs >= 100:
-            self._cleanup_large_num_jobs(job_ids, runas=runas)
-
-        if num_jobs > 0 and num_jobs < 100:
+        sched_state = []
+        scheds = self.status(SCHED)
+        for sc in scheds:
+            if sc['scheduling'] == 'True':
+                sched_state.append(sc['id'])
+                # runas is required here because some tests remove
+                # current user from managers list
+                a = {'scheduling': 'False'}
+                self.manager(MGR_CMD_SET, SCHED, a, id=sc['id'],
+                             runas=ROOT_USER)
+                self.expect(SCHED, a, id=sc['id'])
+        try:
+            self.deljob(id=job_ids, extend=delete_xt,
+                        runas=ROOT_USER, wait=False)
+        except PbsDeljobError:
+            pass
+        st = int(time.time())
+        if len(job_ids) > 100:
+            for host, pids in host_pid_map.items():
+                chunks = [pids[i:i + 5000] for i in range(0, len(pids), 5000)]
+                for chunk in chunks:
+                    self.du.run_cmd(host, ['kill', '-9'] + chunk,
+                                    runas=ROOT_USER, logerr=False)
+            _msg = job_ids[-1] + ';'
+            _msg += 'Job Obit notice received has error 15001'
             try:
-                self.deljob(id=job_ids, extend=delete_xt, runas=runas,
-                            wait=True)
-            except:
+                self.log_match(_msg, starttime=st, interval=10,
+                               max_attempts=10)
+            except PtlLogMatchError:
+                # don't fail on log match error as here purpose
+                # of log match is to allow mom to catch up with
+                # sigchild but we don't want to wait too long
+                # so limit max attempts to 10 ~ total 100 sec
+                # of wait
                 pass
         rv = self.expect(JOB, {'job_state': 0}, count=True, op=SET)
-        if not rv:
-            return self.cleanup_jobs(extend=extend, runas=runas)
-
         # restore 'scheduling' state
-        for sc in self.schedulers:
-            self.manager(MGR_CMD_SET, SCHED,
-                         {'scheduling': sched_state[sc]},
-                         id=self.schedulers[sc].sc_name,
-                         runas='root')
+        for sc in sched_state:
+            a = {'scheduling': 'True'}
+            self.manager(MGR_CMD_SET, SCHED, a, id=sc, runas=ROOT_USER)
+            self.expect(SCHED, a, id=sc)
         return rv
 
-    def cleanup_reservations(self, extend=None, runas=None):
+    def cleanup_reservations(self):
         """
         Helper function to delete all reservations
         """
-        reservations = self.status(RESV, level=logging.DEBUG)
-        while reservations is not None and len(reservations) != 0:
+        reservations = self.status(RESV, runas=ROOT_USER)
+        while reservations:
             resvs = [r['id'] for r in reservations]
             if len(resvs) > 0:
                 try:
-                    self.delresv(resvs, logerr=False, runas=runas)
-                except:
+                    self.delresv(resvs, runas=ROOT_USER)
+                except BaseException:
                     pass
-                reservations = self.status(RESV, level=logging.DEBUG)
+                reservations = self.status(RESV, runas=ROOT_USER)
 
-    def cleanup_jobs_and_reservations(self, extend='forcedeletehist'):
+    def cleanup_jobs_and_reservations(self):
         """
         Helper function to delete all jobs and reservations
-
-        :param extend: Optional extend parameter that is passed
-                       to delete. It defaults to 'deletehist' which
-                       is used in qdel and pbs_deljob() to force
-                       delete all jobs, including history jobs
-        :param extend: str
         """
-        rv = self.cleanup_jobs(extend)
+        rv = self.cleanup_jobs()
         self.cleanup_reservations()
         return rv
-
-    def _cleanup_large_num_jobs(self, job_ids=None, runas=None):
-        """
-        Helper function to cleanup large number of jobs.
-        Job processes are killed manually. Jobs are then deleted
-        using qdel -Wforce
-        """
-        status_list = self.status(JOB,
-                                  attrib=[{'job_state': 'R'}, ATTR_session])
-
-        for s in status_list:
-            if 'session_id' in s:
-                sess_id = s[ATTR_session]
-                self.logger.info('Killing pid [%s]' % sess_id)
-                cmd = 'kill -9 ' + sess_id
-                self.du.run_cmd(self.hostname, cmd, sudo=True,
-                                runas=runas)
-        # Delete jobs from server, if any
-        try:
-            self.delete(id=job_ids, extend='force', wait=True, runas=runas)
-        except PbsDeleteError:
-            pass
 
     def update_attributes(self, obj_type, bs):
         """
@@ -8986,7 +8892,7 @@ class Server(PBSService):
                         if a.endswith('mem'):
                             try:
                                 amt = PbsTypeSize().encode(amt)
-                            except:
+                            except BaseException:
                                 # we guessed the type incorrectly
                                 pass
                     else:
@@ -9004,7 +8910,7 @@ class Server(PBSService):
                 else:
                     equiv[cls] = EquivClass(cls, attrs, [bs['id']])
 
-        return equiv.values()
+        return list(equiv.values())
 
     def show_equivalence_classes(self, eq=None, obj_type=None, attrib={},
                                  bslist=None, op=RESOURCES_AVAILABLE,
@@ -9030,7 +8936,7 @@ class Server(PBSService):
         equiv = sorted(equiv, key=lambda e: len(e.entities))
         for e in equiv:
             # e.show()
-            print str(e)
+            print((str(e)))
 
     def whats_available(self, attrib=None, jobs=None, resvs=None, nodes=None):
         """
@@ -9063,7 +8969,7 @@ class Server(PBSService):
             self.status(NODE)
             nodes = self.nodes
 
-        nodes_id = nodes.keys()
+        nodes_id = list(nodes.keys())
         avail_nodes_by_time = {}
 
         def alloc_resource(self, node, resources):
@@ -9093,7 +8999,7 @@ class Server(PBSService):
                             avail_nodes_by_time[tm].append(nodes[n])
                             try:
                                 nodes_id.remove(n)
-                            except:
+                            except BaseException:
                                 pass
                         else:
                             ncopy = copy.copy(nodes[n])
@@ -9130,7 +9036,7 @@ class Server(PBSService):
                                 avail_nodes_by_time[tm].append(nodes[n])
                                 try:
                                     nodes_id.remove(n)
-                                except:
+                                except BaseException:
                                     pass
                             else:
                                 ncopy = copy.copy(nodes[n])
@@ -9194,12 +9100,12 @@ class Server(PBSService):
         if wa is None:
             wa = self.whats_available(attrib, jobs, resvs, nodes)
         if len(wa) > 0:
-            print "%24s\t%s" % ("Duration of availability", "Resources")
-            print "-------------------------\t----------"
+            print(("%24s\t%s" % ("Duration of availability", "Resources")))
+            print("-------------------------\t----------")
         swa = sorted(wa.items(), key=lambda x: x[0])
         for (k, eq_classes) in swa:
             for eq_cl in eq_classes:
-                print "%24s\t%s" % (str(k), str(eq_cl))
+                print(("%24s\t%s" % (str(k), str(eq_cl))))
 
     def utilization(self, resources=None, nodes=None, jobs=None, entity={}):
         """
@@ -9396,7 +9302,7 @@ class Server(PBSService):
         if createnode:
             try:
                 statm = self.status(NODE, id=natvnode)
-            except:
+            except BaseException:
                 statm = []
             if len(statm) >= 1:
                 _m = 'Mom %s already exists, not creating' % (natvnode)
@@ -9467,7 +9373,7 @@ class Server(PBSService):
         if delall:
             try:
                 rc = self.manager(MGR_CMD_DELETE, NODE, None, "")
-            except PbsManagerError, e:
+            except PbsManagerError as e:
                 rc = e.rc
             if rc:
                 if len(self.status(NODE)) > 0:
@@ -9495,7 +9401,7 @@ class Server(PBSService):
             _np_conf['PBS_START_SERVER'] = '0'
             _np_conf['PBS_START_SCHED'] = '0'
             _np_conf['PBS_START_MOM'] = '1'
-            for i in xrange(0, num * step_port, step_port):
+            for i in range(0, num * step_port, step_port):
                 _np = os.path.join(_hp, home_prefix + str(i))
                 _n_pbsconf = os.path.join('/etc', conf_prefix + str(i))
                 _np_conf['PBS_HOME'] = _np
@@ -9546,7 +9452,7 @@ class Server(PBSService):
         """
         hooks = self.status(HOOK)
         if ((hooks is None or len(hooks) == 0) or
-                (name not in map(lambda x: x['id'], hooks))):
+                (name not in [x['id'] for x in hooks])):
             self.manager(MGR_CMD_CREATE, HOOK, None, name)
         else:
             self.logger.error('hook named ' + name + ' exists')
@@ -9573,7 +9479,7 @@ class Server(PBSService):
         srv_stat = self.status(SERVER, 'sync_mom_hookfiles_timeout')
         try:
             sync_val = srv_stat[0]['sync_mom_hookfiles_timeout']
-        except:
+        except BaseException:
             self.logger.info("Setting sync_mom_hookfiles_timeout to 15s")
             self.manager(MGR_CMD_SET, SERVER,
                          {"sync_mom_hookfiles_timeout": 15})
@@ -9727,8 +9633,8 @@ class Server(PBSService):
         # to split up the formula into keywords, first convert all possible
         # operators into spaces and split the string.
         # TODO: The list of operators may need to be expanded
-        T = string.maketrans('()%+*/-', ' ' * 7)
-        fres = string.translate(formula, T).split()
+        T = formula.maketrans('()%+*/-', ' ' * 7)
+        fres = formula.translate(T).split()
         if jobid:
             d = self.status(JOB, id=jobid, extend='t')
         else:
@@ -9745,6 +9651,7 @@ class Server(PBSService):
                 queue = self.status(JOB, 'queue', id=job['id'])[0]['queue']
                 d = self.status(QUEUE, 'Priority', id=queue)
                 if d and 'Priority' in d[0]:
+                    qprio = int(d[0]['Priority'])
                     qprio = int(d[0]['Priority'])
                     f_value['queue_priority'] = qprio
                 else:
@@ -9916,7 +9823,7 @@ class Server(PBSService):
 
         slim = self.parse_server_limits(server, db_access=db_access)
         qlim = self.parse_queue_limits(queues, id=None, db_access=db_access)
-        self.limits = dict(slim.items() + qlim.items())
+        self.limits = dict(list(slim.items()) + list(qlim.items()))
         del slim
         del qlim
         return self.limits
@@ -10191,7 +10098,7 @@ class Server(PBSService):
             stmt += ", " + str(svrflags)
             stmt += ", 0, 0, 0"
             if 'stime' in job:
-                print job['stime']
+                print(job['stime'])
                 st = time.strptime(job['stime'], "%a %b %d %H:%M:%S %Y")
                 stmt += ", " + str(time.mktime(st))
             else:
@@ -10294,7 +10201,7 @@ class Server(PBSService):
                     if "already exists" not in e.msg[0]:
                         raise
             # Now create users and add them to their associated groups
-            for user, u_grps in users.iteritems():
+            for user, u_grps in users.items():
                 try:
                     self.du.useradd(name=user, groups=list(u_grps))
                 except PtlUtilError as e:
@@ -10307,7 +10214,7 @@ class Server(PBSService):
                               snapmap=self.snapmap)
             try:
                 svr.manager(MGR_CMD_DELETE, NODE, None, id="")
-            except:
+            except BaseException:
                 pass
             svr.revert_to_defaults(delqueues=True, delhooks=True)
             local = svr.pbs_conf['PBS_HOME']
@@ -10348,7 +10255,7 @@ class Server(PBSService):
             for a in ['pbs_license_info', 'mail_from', 'acl_hosts']:
                 try:
                     svr.manager(MGR_CMD_UNSET, SERVER, a, sudo=True)
-                except:
+                except BaseException:
                     pass
 
             for (d, l) in _fcopy:
@@ -10382,7 +10289,7 @@ class Server(PBSService):
                 if vdef:
                     try:
                         svr.manager(MGR_CMD_DELETE, NODE, None, "")
-                    except:
+                    except BaseException:
                         pass
                     MoM(h, pbsconf_file=conf_file).insert_vnode_def(vdef)
                     svr.restart()
@@ -10421,7 +10328,7 @@ class Server(PBSService):
             if import_jobs:
                 jobs = self.status(JOB)
                 sql_stmt = self.__insert_jobs_in_db(jobs, h)
-                print "\n".join(sql_stmt)
+                print("\n".join(sql_stmt))
                 if db_creds_file is not None:
                     pass
 
@@ -10468,7 +10375,7 @@ class EquivClass(PBSObject):
             s += str(self.entities)
         else:
             s += str(len(self.entities))
-        print s
+        print(s)
         return s
 
 
@@ -10487,6 +10394,9 @@ class Resource(PBSObject):
         self.set_name(name)
         self.set_type(type)
         self.set_flag(flag)
+
+    def __del__(self):
+        del self.__dict__
 
     def set_name(self, name):
         """
@@ -10622,8 +10532,6 @@ class Scheduler(PBSService):
         "by_queue": "True                ALL",
         "preemptive_sched": "true        ALL",
         "resources": "\"ncpus, mem, arch, host, vnode, aoe\"",
-        "log_filter": "3328 ",
-
     }
 
     sched_config_options = ["node_group_key",
@@ -10633,7 +10541,6 @@ class Scheduler(PBSService):
                             "resource_unset_infinite",
                             "sync_time",
                             "unknown_shares",
-                            "log_filter",
                             "dedicated_prefix",
                             "load_balancing",
                             "help_starving_jobs",
@@ -10680,10 +10587,10 @@ class Scheduler(PBSService):
                             "strict_fifo"
                             ]
 
-    fs_re = '(?P<name>[\S]+)[\s]*:[\s]*Grp:[\s]*(?P<Grp>[-]*[0-9]*)' + \
-            '[\s]*cgrp:[\s]*(?P<cgrp>[-]*[0-9]*)[\s]*' + \
-            'Shares:[\s]*(?P<Shares>[-]*[0-9]*)[\s]*Usage:[\s]*' + \
-            '(?P<Usage>[0-9]+)[\s]*Perc:[\s]*(?P<Perc>.*)%'
+    fs_re = r'(?P<name>[\S]+)[\s]*:[\s]*Grp:[\s]*(?P<Grp>[-]*[0-9]*)' + \
+            r'[\s]*cgrp:[\s]*(?P<cgrp>[-]*[0-9]*)[\s]*' + \
+            r'Shares:[\s]*(?P<Shares>[-]*[0-9]*)[\s]*Usage:[\s]*' + \
+            r'(?P<Usage>[0-9]+)[\s]*Perc:[\s]*(?P<Perc>.*)%'
     fs_tag = re.compile(fs_re)
 
     def __init__(self, hostname=None, server=None, pbsconf_file=None,
@@ -10746,6 +10653,9 @@ class Scheduler(PBSService):
 
         self.version = None
 
+    def __del__(self):
+        del self.__dict__
+
     def setup_sched_priv(self, sched_priv=None):
         """
         Initialize Scheduler() member variables on initialization or if
@@ -10785,7 +10695,7 @@ class Scheduler(PBSService):
                                        id=self.sc_name)
             if attrs is not None and len(attrs) > 0:
                 self.attributes = attrs[0]
-        except (PbsManagerError, PbsStatusError), e:
+        except (PbsManagerError, PbsStatusError) as e:
             self.logger.error('Error querying scheduler %s' % e.msg)
 
     def isUp(self):
@@ -11031,13 +10941,13 @@ class Scheduler(PBSService):
             conf_opts = self.du.cat(self.hostname, schd_cnfg,
                                     sudo=(not self.has_snap),
                                     level=logging.DEBUG2)['out']
-        except:
+        except BaseException:
             self.logger.error('error parsing scheduler configuration')
             return False
 
         _comment = []
         conf_re = re.compile(
-            '[#]?[\s]*(?P<conf_id>[\w]+):[\s]*(?P<conf_val>.*)')
+            r'[#]?[\s]*(?P<conf_id>[\w]+):[\s]*(?P<conf_val>.*)')
         for line in conf_opts:
             m = conf_re.match(line)
             if m:
@@ -11143,7 +11053,7 @@ class Scheduler(PBSService):
         reconfig_time = int(time.time())
         try:
             fn = self.du.create_temp_file()
-            with open(fn, "w") as fd:
+            with open(fn, "w", encoding="utf-8") as fd:
                 for k in self._config_order:
                     if k in config:
                         if k in self._sched_config_comments:
@@ -11181,7 +11091,7 @@ class Scheduler(PBSService):
             os.remove(fn)
 
             self.logger.debug(self.logprefix + "updated configuration")
-        except:
+        except BaseException:
             m = self.logprefix + 'error in apply_config '
             self.logger.error(m + str(traceback.print_exc()))
             raise PbsSchedConfigError(rc=1, rv=False, msg=m)
@@ -11214,7 +11124,7 @@ class Scheduler(PBSService):
         """
         self.parse_sched_config()
         self.logger.info(self.logprefix + "config " + str(confs))
-        self.sched_config = dict(self.sched_config.items() + confs.items())
+        self.sched_config = {**self.sched_config, **confs}
         if apply:
             try:
                 self.apply_config(validate=validate)
@@ -11226,7 +11136,7 @@ class Scheduler(PBSService):
 
     def add_server_dyn_res(self, custom_resource, script_body=None,
                            res_file=None, apply=True, validate=True,
-                           dirname=None, host=None, perm=0700,
+                           dirname=None, host=None, perm=0o700,
                            prefix='PtlPbsSvrDynRes', suffix='.scr'):
         """
         Add a root owned server dynamic resource script or file to the
@@ -11249,7 +11159,7 @@ class Scheduler(PBSService):
         :param host: the hostname on which dyn res script is created
         :type host: str or None
         :param perm: perm to use while creating scripts
-                     (must be octal like 0777)
+                     (must be octal like 0o777)
         :param prefix: the file name will begin with this prefix
         :type prefix: str
         :param suffix: the file name will end with this suffix
@@ -11370,12 +11280,12 @@ class Scheduler(PBSService):
         if not os.path.exists(sched_priv_dir):
             self.du.mkdir(path=sched_priv_dir, sudo=True)
             self.du.run_copy(self.hostname, self.dflt_resource_group_file,
-                             self.resource_group_file, mode=0644,
+                             self.resource_group_file, mode=0o644,
                              sudo=True)
             self.du.run_copy(self.hostname, self.dflt_holidays_file,
-                             self.holidays_file, mode=0644, sudo=True)
+                             self.holidays_file, mode=0o644, sudo=True)
             self.du.run_copy(self.hostname, self.dflt_sched_config_file,
-                             self.sched_config_file, mode=0644,
+                             self.sched_config_file, mode=0o644,
                              sudo=True)
 
         if not os.path.exists(sched_logs_dir):
@@ -11414,7 +11324,7 @@ class Scheduler(PBSService):
         try:
             with open(outfile, mode) as f:
                 cPickle.dump(sconf, f)
-        except:
+        except BaseException:
             self.logger.error('error saving configuration ' + outfile)
             return False
 
@@ -12114,7 +12024,7 @@ class Scheduler(PBSService):
                     (dtime_from, dtime_to) = self.utils.convert_dedtime(line)
                     self.dedicated_time.append({'from': dtime_from,
                                                 'to': dtime_to})
-        except:
+        except BaseException:
             self.logger.error('error in parse_dedicated_time')
             return None
 
@@ -12194,7 +12104,7 @@ class Scheduler(PBSService):
             self.du.run_copy(self.hostname, fn, ddfile, sudo=True,
                              preserve_permission=False)
             os.remove(fn)
-        except:
+        except BaseException:
             raise PbsSchedConfigError(rc=1, rv=False,
                                       msg='error adding dedicated time')
 
@@ -12264,7 +12174,7 @@ class Scheduler(PBSService):
         """
         try:
             from ptl.utils.pbs_logutils import PBSSchedulerLog
-        except:
+        except BaseException:
             self.logger.error('error loading ptl.utils.pbs_logutils')
             return None
 
@@ -12882,6 +12792,9 @@ class MoM(PBSService):
         self.version = None
         self._is_cpuset_mom = None
 
+    def __del__(self):
+        del self.__dict__
+
     def isUp(self, max_attempts=None):
         """
         Check for PBS mom up
@@ -12898,8 +12811,8 @@ class MoM(PBSService):
             try:
                 nodes = self.server.status(NODE, id=self.shortname)
                 if nodes:
-                    self.server.expect(NODE, {'state': 'free'},
-                                       id=self.shortname)
+                    attr = {'state': (MATCH_RE, 'free|provisioning')}
+                    self.server.expect(NODE, attr, id=self.shortname)
             # Ignore PbsStatusError if mom daemon is up but there aren't
             # any mom nodes
             except PbsStatusError:
@@ -13117,10 +13030,10 @@ class MoM(PBSService):
                 if not self.delete_vnode_defs():
                     return False
                 self.delete_vnodes()
-            if cmp(self.config, self.dflt_config) != 0:
+            if not (self.config == self.dflt_config):
                 # Clear older mom configuration. Apply default.
                 self.config = {}
-                self.apply_config(self.dflt_config, hup=False, restart=False)
+                self.apply_config(self.dflt_config, hup=False, restart=True)
             if restart:
                 self.restart()
             else:
@@ -13157,7 +13070,7 @@ class MoM(PBSService):
         try:
             with open(outfile, mode) as f:
                 cPickle.dump(mconf, f)
-        except:
+        except BaseException:
             self.logger.error('error saving configuration to ' + outfile)
             return False
 
@@ -13198,6 +13111,11 @@ class MoM(PBSService):
         raa = ATTR_rescavail + '.arch'
         a = {raa: None}
         try:
+            a = {'state': 'free'}
+            self.server.expect(NODE, a, id=self.shortname, interval=1)
+        except PtlExpectError:
+            return False
+        try:
             rv = self.server.status(NODE, a, id=self.shortname)
         except PbsStatusError:
             try:
@@ -13207,7 +13125,7 @@ class MoM(PBSService):
                     return False
                 else:
                     raise e
-        if rv[0][raa] == 'linux_cpuset':
+        if len(rv) > 0 and raa in rv[0] and rv[0][raa] == 'linux_cpuset':
             self._is_cpuset_mom = True
         else:
             self._is_cpuset_mom = False
@@ -13280,7 +13198,7 @@ class MoM(PBSService):
                 vdef += [self.shortname + ": resources_available.ncpus=0"]
                 vdef += [self.shortname + ": resources_available.mem=0"]
 
-        for n in xrange(numnodes):
+        for n in range(numnodes):
             vnid = name + pre + str(n) + post
             if sethost:
                 if vnodes_per_host > 1:
@@ -13340,7 +13258,7 @@ class MoM(PBSService):
                         self.config[k] = [self.config[k], v]
                 else:
                     self.config[k] = v
-        except:
+        except BaseException:
             self.logger.error('error in parse_config')
             return None
 
@@ -13414,7 +13332,7 @@ class MoM(PBSService):
         :type hup: bool
         :returns: True on success and False otherwise.
         """
-        self.config = dict(self.config.items() + conf.items())
+        self.config = {**self.config, **conf}
         try:
             fn = self.du.create_temp_file()
             with open(fn, 'w+') as f:
@@ -13429,7 +13347,7 @@ class MoM(PBSService):
             self.du.run_copy(self.hostname, fn, dest,
                              preserve_permission=False, sudo=True)
             os.remove(fn)
-        except:
+        except BaseException:
             raise PbsMomConfigError(rc=1, rv=False,
                                     msg='error processing add_config')
         if restart:
@@ -13470,7 +13388,7 @@ class MoM(PBSService):
         """
         try:
             fn = self.du.create_temp_file(self.hostname, body=vdef)
-        except:
+        except BaseException:
             raise PbsMomConfigError(rc=1, rv=False,
                                     msg="Failed to insert vnode definition")
         if fname is None:
@@ -13634,7 +13552,7 @@ class MoM(PBSService):
         if not ret:
             self.logger.error('error chowning pelog to root')
             return False
-        ret = self.du.chmod(self.hostname, path=pelog, mode=0755, sudo=True)
+        ret = self.du.chmod(self.hostname, path=pelog, mode=0o755, sudo=True)
         return ret
 
     def prologue(self, body=None, src=None):
@@ -13656,7 +13574,7 @@ class MoM(PBSService):
         pass
 
     def add_mom_dyn_res(self, custom_resource, script_body=None,
-                        res_file=None, dirname=None, host=None, perm=0700,
+                        res_file=None, dirname=None, host=None, perm=0o700,
                         prefix='PtlPbsMomDynRes', suffix='.scr'):
         """
         Add a root owned mom dynamic resource script or file to the mom
@@ -13789,7 +13707,7 @@ class ResourceResv(PBSObject):
         exechosts = cls.utils.parse_exechost(exechost)
         if exechosts:
             for h in exechosts:
-                eh = h.keys()[0]
+                eh = list(h.keys())[0]
                 if eh not in hosts:
                     hosts.append(eh)
         return hosts
@@ -13810,7 +13728,7 @@ class ResourceResv(PBSObject):
         execvnodes = PbsTypeExecVnode(execvnode)
         if execvnodes:
             for n in execvnodes:
-                ev = n.keys()[0]
+                ev = list(n.keys())[0]
                 if ev not in vnodes:
                     vnodes.append(ev)
         return vnodes
@@ -13844,7 +13762,7 @@ class Job(ResourceResv):
     runtime = 100
     du = DshUtils()
 
-    def __init__(self, username=None, attrs={}, jobname=None):
+    def __init__(self, username=TEST_USER, attrs={}, jobname=None):
         self.platform = self.du.get_platform()
         self.server = {}
         self.script = None
@@ -13869,6 +13787,9 @@ class Job(ResourceResv):
             self.attributes[ATTR_N] = jobname
         self.set_variable_list(self.username)
         self.set_sleep_time(100)
+
+    def __del__(self):
+        del self.__dict__
 
     def add_cray_vntype(self, select=None):
         """
@@ -13908,8 +13829,9 @@ class Job(ResourceResv):
         if isinstance(a, list):
             a = OrderedDict(a)
 
-        self.attributes = OrderedDict(self.dflt_attributes.items() +
-                                      self.attributes.items() + a.items())
+        self.attributes = OrderedDict(list(self.dflt_attributes.items()) +
+                                      list(self.attributes.items()) +
+                                      list(a.items()))
 
         if self.platform == 'cray' or self.platform == 'craysim':
             s = 'Resource_List.select' in a
@@ -13919,8 +13841,8 @@ class Job(ResourceResv):
                 select = a['Resource_List.select']
                 a['Resource_List.select'] = self.add_cray_vntype(select)
 
-        self.custom_attrs = OrderedDict(self.custom_attrs.items() +
-                                        a.items())
+        self.custom_attrs = OrderedDict(list(self.custom_attrs.items()) +
+                                        list(a.items()))
 
     def set_variable_list(self, user=None, workdir=None):
         """
@@ -13933,7 +13855,7 @@ class Job(ResourceResv):
         else:
             try:
                 homedir = pwd.getpwnam(user)[5]
-            except:
+            except BaseException:
                 homedir = ""
 
         self.username = user
@@ -14008,6 +13930,7 @@ class Job(ResourceResv):
                          be created
         :type hostname: str or None
         """
+
         if body is None:
             return None
 
@@ -14037,6 +13960,14 @@ class Job(ResourceResv):
                     body[i] = " ".join(line_arr)
             body = '\n'.join(body)
 
+        # If the user has a userhost, the job will run from there
+        # so the script should be made there
+        if self.username:
+            user = PbsUser.get_user(self.username)
+            if user.host:
+                hostname = user.host
+                asuser = user.name
+
         self.script_body = body
         if self.du is None:
             self.du = DshUtils()
@@ -14044,10 +13975,7 @@ class Job(ResourceResv):
         # its mode once the current user has written to it
         fn = self.du.create_temp_file(hostname, prefix='PtlPbsJobScript',
                                       asuser=asuser, body=body)
-
-        self.du.chmod(hostname, fn, mode=0755)
-        if not self.du.is_localhost(hostname):
-            self.du.run_copy(hostname, fn, fn)
+        self.du.chmod(hostname, fn, mode=0o755)
         self.script = fn
         return fn
 
@@ -14072,7 +14000,7 @@ class Job(ResourceResv):
         """
         script_dir = os.path.dirname(os.path.dirname(__file__))
         script_path = os.path.join(script_dir, 'utils', 'jobs', 'eatcpu.py')
-        DshUtils().chmod(path=script_path, mode=0755)
+        DshUtils().chmod(path=script_path, mode=0o755)
         self.set_execargs(script_path, duration)
 
 
@@ -14089,7 +14017,7 @@ class Reservation(ResourceResv):
 
     dflt_attributes = {}
 
-    def __init__(self, username=None, attrs=None, hosts=None):
+    def __init__(self, username=TEST_USER, attrs=None, hosts=None):
         self.server = {}
         self.script = None
 
@@ -14122,6 +14050,9 @@ class Reservation(ResourceResv):
 
         PBSObject.__init__(self, None, self.attributes, self.dflt_attributes)
         self.set_attributes()
+
+    def __del__(self):
+        del self.__dict__
 
     def set_variable_list(self, user, workdir=None):
         pass
@@ -14178,13 +14109,16 @@ class InteractiveJob(threading.Thread):
         self.jobid = None
         self.hostname = host
 
+    def __del__(self):
+        del self.__dict__
+
     def run(self):
         """
         Run the interactive job
         """
         try:
             import pexpect
-        except:
+        except BaseException:
             self.logger.error('pexpect module is required for '
                               'interactive jobs')
             return None
@@ -14221,10 +14155,10 @@ class InteractiveJob(threading.Thread):
             self.job.interactive_handle = _p
             time.sleep(_st)
             expstr = "qsub: waiting for job "
-            expstr += "(?P<jobid>\d+.[0-9A-Za-z-.]+) to start"
+            expstr += r"(?P<jobid>\d+.[0-9A-Za-z-.]+) to start"
             _p.expect(expstr)
             if _p.match:
-                self.jobid = _p.match.group('jobid')
+                self.jobid = _p.match.group('jobid').decode()
             else:
                 _p.close()
                 self.job.interactive_handle = None
@@ -14275,6 +14209,9 @@ class Queue(PBSObject):
         m += [': ']
         self.logprefix = "".join(m)
 
+    def __del__(self):
+        del self.__dict__
+
     def revert_to_defaults(self):
         """
         reset queue attributes to defaults
@@ -14305,7 +14242,7 @@ class Queue(PBSObject):
             try:
                 self.server.manager(MGR_CMD_UNSET, MGR_OBJ_QUEUE, unsetlist,
                                     self.name)
-            except PbsManagerError, e:
+            except PbsManagerError as e:
                 self.logger.error(e.msg)
 
         for k in self.dflt_attributes.keys():

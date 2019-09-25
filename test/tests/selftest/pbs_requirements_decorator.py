@@ -38,7 +38,8 @@
 from tests.selftest import *
 
 
-@requirements(num_servers=2, num_comms=2)
+@requirements(num_servers=1, num_comms=1, min_mom_ram=1,
+              min_mom_disk=5, min_server_ram=1, min_server_disk=5)
 class TestRequirementsDecorator(TestSelf):
 
     """
@@ -48,7 +49,8 @@ class TestRequirementsDecorator(TestSelf):
     of this decorator
 
     """
-    @requirements(num_servers=1, num_comms=1)
+    @requirements(num_servers=1, num_comms=1, min_mom_ram=2,
+                  min_mom_disk=5, min_server_ram=2, min_server_disk=5)
     def test_tc_run(self):
         """
         Test to verify test run when requirements are satisfied
@@ -63,8 +65,7 @@ class TestRequirementsDecorator(TestSelf):
             'num_comms': 1
         }
         ds = getattr(self, REQUIREMENTS_KEY, {})
-        rv = cmp(ds, requirements_set)
-        if not rv:
+        if ds == requirements_set:
             raise self.failureException("Requirements not as expected")
 
     @requirements(num_servers=3)

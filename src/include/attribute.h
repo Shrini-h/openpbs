@@ -456,7 +456,9 @@ extern char *parse_comma_string(char *start);
 extern char *return_external_value(char *name, char *val);
 extern char *return_internal_value(char *name, char *val);
 
-#define NULL_FUNC (int (*)())0
+#define NULL_FUNC_CMP (int (*)(attribute *, attribute *))0
+#define NULL_FUNC_RESC (int (*)(resource *, attribute *, void *, int, int))0
+#define NULL_FUNC (int (*)(attribute *, void *, int))0
 #define NULL_VERIFY_DATATYPE_FUNC (int (*)(struct attropl *, char **))0
 #define NULL_VERIFY_VALUE_FUNC (int (*)(int, int, int, struct attropl *, char **))0
 
@@ -571,6 +573,7 @@ extern int check_for_bgl_nodes(attribute *patr,  void *pobject,  int actmode);
 extern int action_sched_iteration(attribute *pattr, void *pobj, int actmode);
 extern int action_sched_priv(attribute *pattr, void *pobj, int actmode);
 extern int action_sched_log(attribute *pattr, void *pobj, int actmode);
+extern int action_sched_log_events(attribute *pattr, void *pobj, int actmode);
 extern int action_sched_user(attribute *pattr, void *pobj, int actmode);
 extern int action_sched_port(attribute *pattr, void *pobj, int actmode);
 extern int action_sched_host(attribute *pattr, void *pobj, int actmode);

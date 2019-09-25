@@ -64,10 +64,7 @@ from ptl.utils.pbs_testsuite import (MINIMUM_TESTCASE_TIMEOUT,
                                      REQUIREMENTS_KEY, TIMEOUT_KEY)
 from ptl.utils.plugins.ptl_test_info import get_effective_reqs
 
-try:
-    from cStringIO import StringIO
-except ImportError:
-    from StringIO import StringIO
+from io import StringIO
 
 log = logging.getLogger('nose.plugins.PTLTestRunner')
 
@@ -173,6 +170,7 @@ class _PtlTestResult(unittest.TestResult):
         if self.handler not in ptl_logger.handlers:
             ptl_logger.addHandler(self.handler)
         self.handler.buffer.truncate(0)
+        self.handler.buffer.seek(0)
         unittest.TestResult.startTest(self, test)
         test.start_time = datetime.datetime.now()
         if self.showAll:
@@ -411,6 +409,41 @@ class _PtlTestResult(unittest.TestResult):
         self.logger.info('\n'.join(msg))
 
 
+class SystemInfo:
+
+    """
+        used to get system's ram size and disk size information.
+
+        :system_ram: Available ram(in GB) of the test running machine
+        :system_disk: Available disk size(in GB) of the test running machine
+    """
+    logger = logging.getLogger(__name__)
+
+    def get_system_info(self, hostname=None):
+        du = DshUtils()
+        # getting RAM size in gb
+        mem_info = du.cat(hostname, "/proc/meminfo")
+        if mem_info['rc'] != 0:
+            _msg = 'failed to get content of /proc/meminfo of host: '
+            self.logger.error(_msg + hostname)
+        else:
+            for i in mem_info['out']:
+                if "MemAvailable" in i:
+                    self.system_ram = float(i.split()[1]) / (2**20)
+                    break
+        # getting disk size in gb
+        pbs_conf = du.parse_pbs_config(hostname)
+        pbs_home_info = du.run_cmd(hostname, cmd=['df', '-k',
+                                   pbs_conf['PBS_HOME']])
+        if pbs_home_info['rc'] != 0:
+            _msg = 'failed to get output of df -k command of host: '
+            self.logger.error(_msg + hostname)
+        else:
+            disk_info = pbs_home_info['out']
+            disk_size = disk_info[1].split()
+            self.system_disk = float(disk_size[3]) / (2**20)
+
+
 class PtlTextTestRunner(TextTestRunner):
 
     """
@@ -461,7 +494,7 @@ class PTLTestRunner(Plugin):
     PTL Test Runner Plugin
     """
     name = 'PTLTestRunner'
-    score = sys.maxint - 4
+    score = sys.maxsize - 4
     logger = logging.getLogger(__name__)
 
     def __init__(self):
@@ -503,7 +536,7 @@ class PTLTestRunner(Plugin):
                     continue
                 else:
                     _nparams.append(_params_from_file[l])
-            _f = ','.join(map(lambda l: l.strip('\r\n'), _nparams))
+            _f = ','.join([l.strip('\r\n') for l in _nparams])
             if testparam is not None:
                 testparam += ',' + _f
             else:
@@ -563,13 +596,11 @@ class PTLTestRunner(Plugin):
                                    'conf',
                                    {}).get('default-testcase-timeout',
                                            MINIMUM_TESTCASE_TIMEOUT))
-        tc_timeout = getattr(getattr(_test,
-                                     getattr(_test,
-                                             '_testMethodName',
-                                             ''),
-                                     None),
-                             TIMEOUT_KEY,
-                             0)
+        tc_timeout = int(getattr(getattr(_test,
+                                 getattr(_test, '_testMethodName', ''),
+                                 None),
+                         TIMEOUT_KEY,
+                         0))
         return max([dflt_timeout, tc_timeout])
 
     def __set_test_end_data(self, test, err=None):
@@ -652,7 +683,7 @@ class PTLTestRunner(Plugin):
             method = getattr(test.test, test_name, None)
         if method is not None:
             tc_requirements = getattr(method, REQUIREMENTS_KEY, {})
-            cls = method.im_class
+            cls = method.__self__.__class__
             ts_requirements = getattr(cls, REQUIREMENTS_KEY, {})
         if not tc_requirements:
             if not ts_requirements:
@@ -663,6 +694,32 @@ class PTLTestRunner(Plugin):
             param_count['num_' + key] = len(param_dic[key])
         for pk in param_count:
             if param_count[pk] < eff_tc_req[pk]:
+                return False
+        for hostname in param_dic['moms']:
+            si = SystemInfo()
+            si.get_system_info(hostname)
+            available_sys_ram = getattr(si, 'system_ram', None)
+            if available_sys_ram is None:
+                return False
+            elif eff_tc_req['min_mom_ram'] >= available_sys_ram:
+                return False
+            available_sys_disk = getattr(si, 'system_disk', None)
+            if available_sys_disk is None:
+                return False
+            elif eff_tc_req['min_mom_disk'] >= available_sys_disk:
+                return False
+        for hostname in param_dic['servers']:
+            si = SystemInfo()
+            si.get_system_info(hostname)
+            available_sys_ram = getattr(si, 'system_ram', None)
+            if available_sys_ram is None:
+                return False
+            elif eff_tc_req['min_server_ram'] >= available_sys_ram:
+                return False
+            available_sys_disk = getattr(si, 'system_disk', None)
+            if available_sys_disk is None:
+                return False
+            elif eff_tc_req['min_server_disk'] >= available_sys_disk:
                 return False
         if set(param_dic['moms']) & set(param_dic['servers']):
             if eff_tc_req['no_mom_on_server']:

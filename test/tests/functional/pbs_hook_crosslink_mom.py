@@ -39,6 +39,7 @@ from tests.functional import *
 
 
 @tags('hooks')
+@requirements(num_moms=2)
 class TestPbsHookCrossLinkMom(TestFunctional):
     """
     When a hook updates attributes of vnodes not belonging to MoM on which
@@ -108,8 +109,8 @@ this_event.accept()
 
         status = self.server.status(NODE, id=self.hostA)
         Mom = status[0][ATTR_NODE_Mom]
-        self.assertEquals(Mom, Mom1_before)
+        self.assertEqual(Mom, Mom1_before)
 
         status = self.server.status(NODE, id=self.hostB)
         Mom = status[0][ATTR_NODE_Mom]
-        self.assertEquals(Mom, Mom2_before)
+        self.assertEqual(Mom, Mom2_before)

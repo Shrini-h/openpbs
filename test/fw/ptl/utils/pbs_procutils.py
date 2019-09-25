@@ -173,7 +173,7 @@ class ProcUtils(object):
             platform = sys.platform
 
         try:
-            if platform.startswith('linux'):
+            if platform.startswith('linux') or platform.startswith('shasta'):
                 cmd = ['ps', '-o', 'stat', '-p', str(pid), '--no-heading']
                 rv = self.du.run_cmd(hostname, cmd, level=logging.DEBUG2)
                 return rv['out'][0][0]
@@ -202,7 +202,7 @@ class ProcUtils(object):
 
             childlist = []
 
-            if platform.startswith('linux'):
+            if platform.startswith('linux') or platform.startswith('shasta'):
                 cmd = ['ps', '-o', 'pid', '--ppid:%s' % ppid, '--no-heading']
                 rv = self.du.run_cmd(hostname, cmd)
                 children = rv['out'][:-1]
@@ -256,7 +256,7 @@ class ProcMonitor(threading.Thread):
         self.frequency = frequency
         self.regexp = regexp
         self._pu = ProcUtils()
-        self._go = True
+        self.stop_thread = threading.Event()
         self.db_proc_info = []
 
     def set_frequency(self, value=60):
@@ -273,7 +273,7 @@ class ProcMonitor(threading.Thread):
         """
         Run the process monitoring
         """
-        while self._go:
+        while not self.stop_thread.is_set():
             self._pu.get_proc_info(name=self.name, regexp=self.regexp)
             for _p in self._pu.processes.values():
                 for _per_proc in _p:
@@ -290,8 +290,9 @@ class ProcMonitor(threading.Thread):
         """
         Stop the process monitoring
         """
-        self._go = False
-        self._Thread__stop()
+        self.stop_thread.set()
+        self.join()
+
 
 if __name__ == '__main__':
     pm = ProcMonitor(name='.*pbs_server.*|.*pbs_sched.*', regexp=True,

@@ -273,6 +273,7 @@ tpp_set_keep_alive(int fd, struct tpp_config *cnf)
 	}
 #endif
 
+#ifndef WIN32
 #ifdef TCP_KEEPIDLE
 	optval = cnf->tcp_keep_idle;
 	if (tpp_sock_setsockopt(fd, IPPROTO_TCP, TCP_KEEPIDLE, &optval, optlen) < 0) {
@@ -299,6 +300,8 @@ tpp_set_keep_alive(int fd, struct tpp_config *cnf)
 		return -1;
 	}
 #endif
+
+#endif /*for win32*/
 
 	return 0;
 }

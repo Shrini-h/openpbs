@@ -43,6 +43,10 @@ ptlpkg_bindir = ${ptl_prefix}/bin
 
 dist_ptlpkg_bin_SCRIPTS = $(wildcard $(srcdir)/bin/*)
 
+ptlpkg_fwdir = ${ptl_prefix}/fw
+
+dist_ptlpkg_fw_DATA =  $(srcdir)/requirements.txt
+
 ptlpkg_pylib_topdir = ${ptl_prefix}/lib/python$(PYTHON_VERSION)/site-packages/ptl
 
 dist_ptlpkg_pylib_top_PYTHON = $(wildcard $(builddir)/ptl/*.py)
@@ -98,9 +102,9 @@ dist_ptlmoduleutils_PYTHON = \
 	ptl/utils/pbs_cliutils.py \
 	ptl/utils/pbs_logutils.py \
 	ptl/utils/pbs_testsuite.py \
-	ptl/utils/pbs_fileutils.py \
 	ptl/utils/pbs_anonutils.py \
 	ptl/utils/pbs_snaputils.py \
+	ptl/utils/pbs_testusers.py \
 	ptl/utils/__init__.py
 
 ptlmoduleutilspluginsdir = $(ptlmoduleutilsdir)/plugins

@@ -48,6 +48,7 @@ import tempfile
 import pwd
 import grp
 import platform
+from ptl.utils.pbs_testusers import PBS_ALL_USERS, PbsUser
 
 DFLT_RSYNC_CMD = ['rsync', '-e', 'ssh', '--progress', '--partial', '-ravz']
 DFLT_COPY_CMD = ['scp', '-p']
@@ -190,8 +191,8 @@ class DshUtils(object):
             found_already = True
         if not self.is_localhost(hostname) and not found_already:
             if pyexec is None:
-                pyexec = self.which(hostname, 'python', level=logging.DEBUG2)
-            cmd = [pyexec, '-c', '"import sys; print sys.platform"']
+                pyexec = self.which(hostname, 'python3', level=logging.DEBUG2)
+            cmd = [pyexec, '-c', '"import sys; print(sys.platform)"']
             ret = self.run_cmd(hostname, cmd=cmd)
             if ret['rc'] != 0 or len(ret['out']) == 0:
                 _msg = 'Unable to retrieve platform info,'
@@ -222,9 +223,9 @@ class DshUtils(object):
             return self._h2pu[hostname]
         if not self.is_localhost(hostname):
             if pyexec is None:
-                pyexec = self.which(hostname, 'python', level=logging.DEBUG2)
+                pyexec = self.which(hostname, 'python3', level=logging.DEBUG2)
             _cmdstr = '"import platform;'
-            _cmdstr += 'print \' \'.join(platform.uname())"'
+            _cmdstr += 'print(\' \'.join(platform.uname()))"'
             cmd = [pyexec, '-c', _cmdstr]
             ret = self.run_cmd(hostname, cmd=cmd)
             if ret['rc'] != 0 or len(ret['out']) == 0:
@@ -257,10 +258,10 @@ class DshUtils(object):
             return self._h2osinfo[hostname]
 
         if pyexec is None:
-            pyexec = self.which(hostname, 'python', level=logging.DEBUG2)
+            pyexec = self.which(hostname, 'python3', level=logging.DEBUG2)
 
         cmd = [pyexec, '-c',
-               '"import platform; print platform.platform()"']
+               '"import platform; print(platform.platform())"']
         ret = self.run_cmd(hostname, cmd=cmd)
         if ret['rc'] != 0 or len(ret['out']) == 0:
             self.logger.warning("Unable to retrieve OS info, defaulting "
@@ -325,7 +326,7 @@ class DshUtils(object):
             conf = self._parse_file(hostname, fin)
         else:
             conf = {}
-        conf = dict(conf.items() + variables.items())
+        conf = {**conf, **variables}
         if os.path.isfile(fout):
             fout_stat = os.stat(fout)
             user = fout_stat.st_uid
@@ -336,7 +337,7 @@ class DshUtils(object):
 
         try:
             fn = self.create_temp_file()
-            self.chmod(path=fn, mode=0644)
+            self.chmod(path=fn, mode=0o644)
             with open(fn, 'w') as fd:
                 for k, v in conf.items():
                     fd.write(str(k) + '=' + str(v) + '\n')
@@ -363,6 +364,7 @@ class DshUtils(object):
         :returns: Path to pbs conf file
         """
         dflt_conf = '/etc/pbs.conf'
+        dflt_python = '/opt/pbs/python/bin/python'
 
         if hostname is None:
             hostname = socket.gethostname()
@@ -374,9 +376,15 @@ class DshUtils(object):
             if 'PBS_CONF_FILE' in os.environ:
                 dflt_conf = os.environ['PBS_CONF_FILE']
         else:
-            pc = ('"import os;print [False, os.environ[\'PBS_CONF_FILE\']]'
-                  '[\'PBS_CONF_FILE\' in os.environ]"')
-            cmd = ['python', '-c', pc]
+            pc = ('"import os;print([False, os.environ[\'PBS_CONF_FILE\']]'
+                  '[\'PBS_CONF_FILE\' in os.environ])"')
+            cmd = ['ls', '-1', dflt_python]
+            ret = self.run_cmd(hostname, cmd, logerr=False)
+            if ret['rc'] == 0:
+                pyexec = dflt_python
+            else:
+                pyexec = 'python3'
+            cmd = [pyexec, '-c', pc]
             ret = self.run_cmd(hostname, cmd, logerr=False)
             if ((ret['rc'] != 0) and (len(ret['out']) > 0) and
                     (ret['out'][0] != 'False')):
@@ -451,7 +459,7 @@ class DshUtils(object):
         elif isinstance(confs, str):
             confs = confs.split(',')
         elif isinstance(confs, dict):
-            confs = confs.keys()
+            confs = list(confs.keys())
 
         tounset = []
         cur_confs = self.parse_pbs_config(hostname, fin)
@@ -538,7 +546,7 @@ class DshUtils(object):
         elif isinstance(environ, str):
             environ = environ.split(',')
         elif isinstance(environ, dict):
-            environ = environ.keys()
+            environ = list(environ.keys())
 
         tounset = []
         cur_environ = self.parse_pbs_environment(hostname, fin)
@@ -638,7 +646,7 @@ class DshUtils(object):
                 uid = _user.pw_uid
             rhost = os.path.join(home, '.rhosts')
             fn = self.create_temp_file(hostname)
-            self.chmod(hostname, fn, mode=0755)
+            self.chmod(hostname, fn, mode=0o755)
             with open(fn, 'w') as fd:
                 fd.write('#!/bin/bash\n')
                 fd.write('cd %s\n' % (home))
@@ -663,7 +671,7 @@ class DshUtils(object):
             self.rm(hostname, path=fn)
             if ret['rc'] != 0:
                 raise Exception(ret['out'] + ret['err'])
-        except Exception, e:
+        except Exception as e:
             raise PbsConfigError(rc=1, rv=None, msg='error writing .rhosts ' +
                                  str(e))
         return conf
@@ -692,7 +700,7 @@ class DshUtils(object):
         self._current_user = pwd.getpwuid(os.getuid())[0]
         return self._current_user
 
-    def check_user_exists(self, username=None, hostname=None):
+    def check_user_exists(self, username=None, hostname=None, port=None):
         """
         Check if user exist  or not
 
@@ -700,12 +708,17 @@ class DshUtils(object):
         :type username: str or None
         :param hostname: Machine hostname
         :type hostname: str or None
+        :param port: port used to ssh other host
+        :type port: str or None
         :returns: True if exist else return False
         """
         if hostname is None:
             hostname = socket.gethostname()
-
-        ret = self.run_cmd(hostname, ['id', username])
+        if self.get_platform() == "shasta":
+            runas = username
+        else:
+            runas = None
+        ret = self.run_cmd(hostname, ['id', username], port=port, runas=runas)
         if ret['rc'] == 0:
             return True
         return False
@@ -756,17 +769,17 @@ class DshUtils(object):
         glist = {}
         for u in users_list:
             info = self.get_id_info(u)
-            if not info['pgroup'] in glist.keys():
+            if not info['pgroup'] in list(glist.keys()):
                 glist[info['pgroup']] = [info['name']]
             else:
                 glist[info['pgroup']].append(info['name'])
             for g in info['groups']:
-                if g not in glist.keys():
+                if g not in list(glist.keys()):
                     glist[g] = []
                 if not info['name'] in glist[g]:
                     glist[g].append(info['name'])
         for g in group_list:
-            if g in glist.keys():
+            if g in list(glist.keys()):
                 groups[g] = glist[g]
             else:
                 try:
@@ -832,8 +845,9 @@ class DshUtils(object):
         if self.is_localhost(hostname):
             self._tempdir[hostname] = tempfile.gettempdir()
         else:
-            cmd = ['python', '-c',
-                   '"import tempfile;print tempfile.gettempdir()"']
+            pyexec = self.which(hostname, 'python3', level=logging.DEBUG2)
+            cmd = [pyexec, '-c',
+                   '"import tempfile; print(tempfile.gettempdir())"']
             ret = self.run_cmd(hostname, cmd, level=logging.DEBUG)
             if ret['rc'] == 0:
                 self._tempdir[hostname] = ret['out'][0].strip()
@@ -845,7 +859,7 @@ class DshUtils(object):
     def run_cmd(self, hosts=None, cmd=None, sudo=False, stdin=None,
                 stdout=PIPE, stderr=PIPE, input=None, cwd=None, env=None,
                 runas=None, logerr=True, as_script=False, wait_on_script=True,
-                level=logging.INFOCLI2):
+                level=logging.INFOCLI2, port=None):
         """
         Run a command on a host or list of hosts.
 
@@ -881,12 +895,17 @@ class DshUtils(object):
         :param wait_on_script: If True (default) waits on process
                                launched as script to return.
         :type wait_on_script: boolean
+        :type port: str
+        :param port: port number used with remote host IP address
+                     for ssh
         :returns: error, output, return code as a dictionary:
                   ``{'out':...,'err':...,'rc':...}``
         """
 
         rshcmd = []
         sudocmd = []
+        platform = self.get_platform()
+        _runas_user = None
 
         if level is None:
             level = self.logger.level
@@ -901,6 +920,9 @@ class DshUtils(object):
             elif not isinstance(runas, str):
                 # must be as PbsUser object
                 runas = str(runas)
+
+        if runas:
+            _runas_user = PbsUser.get_user(runas)
 
         if isinstance(cmd, str):
             cmd = cmd.split()
@@ -920,6 +942,9 @@ class DshUtils(object):
         ret = {'out': '', 'err': '', 'rc': 0}
 
         for hostname in hosts:
+            if (platform == "shasta") and _runas_user:
+                hostname = _runas_user.host if _runas_user.host else hostname
+                port = _runas_user.port
             islocal = self.is_localhost(hostname)
             if islocal is None:
                 # an error occurred processing that name, move on
@@ -928,11 +953,19 @@ class DshUtils(object):
                 ret['rc'] = 1
                 continue
             if not islocal:
-                rshcmd = self.rsh_cmd + [hostname]
-            if sudo or ((runas is not None) and (runas != _user)):
-                sudocmd = copy.copy(self.sudo_cmd)
-                if runas is not None:
-                    sudocmd += ['-u', runas]
+                if port and platform == "shasta":
+                    if runas is None:
+                        user = _user
+                    else:
+                        user = _runas_user.name
+                    rshcmd = self.rsh_cmd + ['-p', port, user + '@' + hostname]
+                else:
+                    rshcmd = self.rsh_cmd + [hostname]
+            if platform != "shasta":
+                if sudo or ((runas is not None) and (runas != _user)):
+                    sudocmd = copy.copy(self.sudo_cmd)
+                    if runas is not None:
+                        sudocmd += ['-u', runas]
 
             # Initialize information to return
             ret = {'out': None, 'err': None, 'rc': None}
@@ -949,19 +982,20 @@ class DshUtils(object):
                     script_body += [" ".join(cmd)]
                 with open(_script, 'w') as f:
                     f.write('\n'.join(script_body))
-                os.chmod(_script, 0755)
+                os.chmod(_script, 0o755)
                 if not islocal:
                     # TODO: get a valid remote temporary file rather than
                     # assume that the remote host has a similar file
                     # system layout
-                    self.run_copy(hostname, _script, _script, level=level)
+                    self.run_copy(hostname, _script, _script,
+                                  runas=runas, level=level)
                     os.remove(_script)
                 runcmd = rshcmd + sudocmd + [_script]
             else:
                 runcmd = rc
 
             _msg = hostname.split('.')[0] + ': '
-            _runcmd = map(lambda x: '\'\'' if x == '' else str(x), runcmd)
+            _runcmd = ['\'\'' if x == '' else str(x) for x in runcmd]
             _msg += ' '.join(_runcmd)
             _msg = [_msg]
             if as_script:
@@ -975,7 +1009,7 @@ class DshUtils(object):
             try:
                 p = Popen(runcmd, bufsize=-1, stdin=stdin, stdout=stdout,
                           stderr=stderr, cwd=cwd, env=env)
-            except Exception, e:
+            except Exception as e:
                 self.logger.error("Error running command " + str(runcmd))
                 if as_script:
                     self.logger.error('Script contents: \n' +
@@ -993,12 +1027,16 @@ class DshUtils(object):
 
             if as_script:
                 # must pass as_script=False otherwise it will loop infinite
-                self.rm(hostname, path=_script, as_script=False,
-                        level=level)
+                if platform == 'shasta' and runas:
+                    self.rm(hostname, path=_script, as_script=False,
+                            level=level, runas=runas)
+                else:
+                    self.rm(hostname, path=_script, as_script=False,
+                            level=level)
 
             # handle the case where stdout is not a PIPE
             if o is not None:
-                ret['out'] = o.splitlines()
+                ret['out'] = [i.decode("utf-8") for i in o.splitlines()]
             else:
                 ret['out'] = []
             # Some output can be very verbose, for example listing many lines
@@ -1010,7 +1048,7 @@ class DshUtils(object):
             else:
                 self.logger.debug('out: ' + str(ret['out']))
             if e is not None:
-                ret['err'] = e.splitlines()
+                ret['err'] = [i.decode("utf-8") for i in e.splitlines()]
             else:
                 ret['err'] = []
             if ret['err'] and logerr:
@@ -1063,6 +1101,7 @@ class DshUtils(object):
         :returns: {'out':<outdata>, 'err': <errdata>, 'rc':<retcode>}
                   upon and None if no source file specified
         """
+
         if src is None:
             self.logger.warning('no source file specified')
             return None
@@ -1084,15 +1123,19 @@ class DshUtils(object):
         if sudo is True and not self.sudo_cmd:
             sudo = False
 
+        runas = PbsUser.get_user(runas)
+
         for targethost in hosts:
             islocal = self.is_localhost(targethost)
             if sudo and not islocal:
                 # to avoid a file copy as root, we copy it as current user
                 # and move it remotely to the desired path/name.
                 # First, get a remote temporary filename
-                cmd = ['python', '-c',
-                       '"import tempfile;print ' +
-                       'tempfile.mkstemp(\'PtlPbstmpcopy\')[1]"']
+                pyexec = self.which(targethost, 'python3',
+                                    level=logging.DEBUG2)
+                cmd = [pyexec, '-c',
+                       '"import tempfile;print(' +
+                       'tempfile.mkstemp(\'PtlPbstmpcopy\')[1])"']
                 # save original destination
                 sudo_save_dest = dest
                 # Make the target of the copy the temporary file
@@ -1121,11 +1164,16 @@ class DshUtils(object):
                 cmd += copy_cmd
                 if recursive:
                     cmd += ['-r']
+                if runas and runas.port:
+                    cmd += ['-P', runas.port]
                 cmd += [src]
                 if islocal:
                     cmd += [dest]
                 else:
-                    cmd += [targethost + ':' + dest]
+                    if self.get_platform() == 'shasta' and runas:
+                        cmd += [str(runas) + '@' + targethost + ':' + dest]
+                    else:
+                        cmd += [targethost + ':' + dest]
             else:
                 cmd += [self.which(targethost, 'cp', level=level)]
                 if preserve_permission:
@@ -1135,9 +1183,12 @@ class DshUtils(object):
                 cmd += [src]
                 cmd = cmd + [dest]
 
-            ret = self.run_cmd(socket.gethostname(), cmd, env=env, runas=runas,
-                               logerr=logerr, level=level)
-
+            if self.get_platform() == 'shasta':
+                ret = self.run_cmd(socket.gethostname(), cmd, env=env,
+                                   logerr=logerr, level=level)
+            else:
+                ret = self.run_cmd(socket.gethostname(), cmd, env=env,
+                                   runas=runas, logerr=logerr, level=level)
             if ret['rc'] != 0:
                 self.logger.error(ret['err'])
             elif sudo_save_dest:
@@ -1175,7 +1226,7 @@ class DshUtils(object):
         cmd = _cmd
         self.logger.debug(' '.join(cmd))
         dest = None
-        if ('PYTHONPATH' in os.environ.keys() and
+        if ('PYTHONPATH' in list(os.environ.keys()) and
                 not self.is_localhost(hostname)):
             body = ['#!/bin/bash']
             body += ['PYTHONPATH=%s exec %s' % (os.environ['PYTHONPATH'],
@@ -1185,7 +1236,7 @@ class DshUtils(object):
             dest = os.path.join(tmpdir, os.path.basename(fn))
             oldc = self.copy_cmd[:]
             self.set_copy_cmd('scp -p')
-            self.run_copy(hostname, fn, dest, mode=0755, level=level)
+            self.run_copy(hostname, fn, dest, mode=0o755, level=level)
             self.set_copy_cmd(' '.join(oldc))
             self.rm(None, path=fn, force=True, logerr=False)
             cmd = dest
@@ -1241,7 +1292,7 @@ class DshUtils(object):
             (hostname, aliaslist, iplist) = socket.gethostbyname_ex(host)
         except:
             self.logger.error('error getting host by name: ' + host)
-            print traceback.print_stack()
+            print((traceback.print_stack()))
             return None
 
         localhost = socket.gethostname()
@@ -1253,6 +1304,13 @@ class DshUtils(object):
             self.logger.error('could not resolve local host name')
             return False
         if ipaddr in iplist:
+            self._h2l[host] = True
+            return True
+        # on a shasta machine, the name returned by `hostname` (pbs-host) is
+        # different than the one we tell PTL to use (pbs-service-nmn). This
+        # causes a name mismatch, so we should just set it to be True
+        if (self.get_platform() == 'shasta' and host == 'pbs-service-nmn' and
+           localhost == 'pbs-host'):
             self._h2l[host] = True
             return True
         self._h2l[host] = False
@@ -1355,11 +1413,11 @@ class DshUtils(object):
         if (self.is_localhost(hostname) and (not sudo) and (runas is None)):
             return os.path.getmtime(path)
         else:
-            py_cmd = 'import os; print os.path.getmtime(\'%s\')' % (path)
+            py_cmd = 'import os; print(os.path.getmtime(\'%s\'))' % (path)
             if not self.is_localhost(hostname):
                 py_cmd = '\"' + py_cmd + '\"'
-
-            cmd = [self.which(hostname, 'python', level=level), '-c', py_cmd]
+            pyexec = self.which(hostname, 'python3', level=logging.DEBUG2)
+            cmd = [pyexec, '-c', py_cmd]
             ret = self.run_cmd(hostname, cmd=cmd, sudo=sudo, runas=runas,
                                logerr=False, level=level)
             if ((ret['rc'] == 0) and (len(ret['out']) == 1) and
@@ -1404,9 +1462,9 @@ class DshUtils(object):
             else:
                 return None
         if fullpath is True:
-            return map(lambda p: os.path.join(path, p.strip()), files)
+            return [os.path.join(path, p.strip()) for p in files]
         else:
-            return map(lambda p: p.strip(), files)
+            return [p.strip() for p in files]
 
     def chmod(self, hostname=None, path=None, mode=None, sudo=False,
               runas=None, recursive=False, logerr=True,
@@ -1439,7 +1497,8 @@ class DshUtils(object):
         cmd = [self.which(hostname, 'chmod', level=level)]
         if recursive:
             cmd += ['-R']
-        cmd += [oct(mode), path]
+        mode = '{:o}'.format(mode)
+        cmd += [mode, path]
         ret = self.run_cmd(hostname, cmd=cmd, sudo=sudo, logerr=logerr,
                            runas=runas, level=level)
         if ret['rc'] == 0:
@@ -1577,18 +1636,33 @@ class DshUtils(object):
 
         oexe = exe
         exe = os.path.basename(exe)
-        if hostname in self._h2which.keys():
+        if hostname in list(self._h2which.keys()):
             if exe in self._h2which[hostname]:
                 return self._h2which[hostname][exe]
 
         sudo_wrappers_dir = '/opt/tools/wrappers'
         _exe = os.path.join(sudo_wrappers_dir, exe)
         if os.path.isfile(_exe) and os.access(_exe, os.X_OK):
-            if hostname not in self._h2which.keys():
+            if hostname not in list(self._h2which.keys()):
                 self._h2which.setdefault(hostname, {exe: _exe})
             else:
                 self._h2which[hostname].setdefault(exe, _exe)
             return _exe
+
+        # Changes specific to python
+        # Use PBS Python if available before looking for system Python
+        if exe is 'python3':
+            pbs_conf = self.parse_pbs_config(hostname)
+            py_path = os.path.join(pbs_conf['PBS_EXEC'], 'python',
+                                   'bin', 'python')
+            cmd = ['ls', '-1', py_path]
+            ret = self.run_cmd(hostname, cmd, logerr=False)
+            if ret['rc'] == 0:
+                if hostname not in self._h2which.keys():
+                    self._h2which.setdefault(hostname, {exe: py_path})
+                else:
+                    self._h2which[hostname].setdefault(exe, py_path)
+                return py_path
 
         cmd = ['which', exe]
         ret = self.run_cmd(hostname, cmd=cmd, logerr=False,
@@ -1715,7 +1789,8 @@ class DshUtils(object):
         if parents:
             cmd += ['-p']
         if mode is not None:
-            cmd += ['-m', oct(mode)]
+            mode = '{:o}'.format(mode)
+            cmd += ['-m', mode]
         if isinstance(path, list):
             cmd += path
         else:
@@ -1812,7 +1887,7 @@ class DshUtils(object):
         if home_dir is not None:
             cmd += ['-d', home_dir]
         if ((groups is not None) and (len(groups) > 0)):
-            cmd += ['-G', ','.join(map(lambda g: str(g), groups))]
+            cmd += ['-G', ','.join([str(g) for g in groups])]
         cmd += [str(name)]
         ret = self.run_cmd(cmd=cmd, logerr=logerr, sudo=True, level=level)
         if ((ret['rc'] != 0) and logerr):
@@ -1890,17 +1965,23 @@ class DshUtils(object):
         # write user provided contents to file
         if body is not None:
             if isinstance(body, list):
-                os.write(fd, "\n".join(body))
+                os.write(fd, "\n".join(body).encode())
             else:
-                os.write(fd, body)
+                os.write(fd, body.encode())
         os.close(fd)
+
+        if not hostname and asuser:
+            asuser = PbsUser.get_user(asuser)
+            if asuser.host:
+                hostname = asuser.host
+
         # if temp file to be created on remote host
         if not self.is_localhost(hostname):
             if asuser is not None:
                 # by default mkstemp creates file with 0600 permission
                 # to create file as different user first change the file
                 # permission to 0644 so that other user has read permission
-                self.chmod(hostname, tmpfile, mode=0644)
+                self.chmod(path=tmpfile, mode=0o644)
                 # copy temp file created  on local host to remote host
                 # as different user
                 self.run_copy(hostname, tmpfile, tmpfile, runas=asuser,
@@ -1909,13 +1990,13 @@ class DshUtils(object):
                 # copy temp file created on localhost to remote as current user
                 self.run_copy(hostname, tmpfile, tmpfile,
                               preserve_permission=False, level=level)
-            # remove local temp file
-            os.unlink(tmpfile)
+                # remove local temp file
+                os.unlink(tmpfile)
         if asuser is not None:
             # by default mkstemp creates file with 0600 permission
             # to create file as different user first change the file
             # permission to 0644 so that other user has read permission
-            self.chmod(hostname, tmpfile, mode=0644)
+            self.chmod(hostname, tmpfile, mode=0o644)
             # since we need to create as differnt user than current user
             # create a temp file just to get temp file name with absolute path
             (_, tmpfile2) = tempfile.mkstemp(suffix, prefix, dirname, text)
@@ -1965,7 +2046,7 @@ class DshUtils(object):
                 # by default mkstemp creates dir with 0600 permission
                 # to create dir as different user first change the dir
                 # permission to 0644 so that other user has read permission
-                self.chmod(path=tmpdir, mode=0755)
+                self.chmod(path=tmpdir, mode=0o755)
                 # copy temp dir created on local host to remote host
                 # as different user
                 self.run_copy(hostname, tmpdir, tmpdir, runas=asuser,
@@ -1980,7 +2061,7 @@ class DshUtils(object):
             # by default mkdtemp creates dir with 0600 permission
             # to create dir as different user first change the dir
             # permission to 0644 so that other user has read permission
-            self.chmod(path=tmpdir, mode=0755)
+            self.chmod(path=tmpdir, mode=0o755)
             # since we need to create as differnt user than current user
             # create a temp dir just to get temp dir name with absolute path
             tmpdir2 = tempfile.mkdtemp(suffix, prefix, dirname)
@@ -2006,4 +2087,4 @@ class DshUtils(object):
         for line in lines:
             m = timestamp_exec_re.match(line)
             if m:
-                print line
+                print(line)

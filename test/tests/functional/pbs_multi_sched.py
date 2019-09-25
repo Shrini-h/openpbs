@@ -35,8 +35,9 @@
 # "PBS Professional®", and "PBS Pro™" and Altair’s logos is subject to Altair's
 # trademark licensing policies.
 
-from tests.functional import *
 import resource
+
+from tests.functional import *
 
 
 class TestMultipleSchedulers(TestFunctional):
@@ -55,7 +56,7 @@ class TestMultipleSchedulers(TestFunctional):
         self.scheds['sc1'].start()
         self.server.manager(MGR_CMD_SET, SCHED,
                             {'scheduling': 'True'}, id="sc1")
-        self.scheds['sc1'].set_sched_config({'log_filter': 2048})
+        self.server.manager(MGR_CMD_SET, SCHED, {'log_events': 2047}, id='sc1')
 
     def setup_sc2(self):
         dir_path = os.path.join(os.sep, 'var', 'spool', 'pbs', 'sched_dir')
@@ -223,7 +224,7 @@ class TestMultipleSchedulers(TestFunctional):
         self.server.manager(MGR_CMD_SET, NODE, a, id='vnode[2]')
         self.server.manager(MGR_CMD_SET, SCHED,
                             {'scheduling': 'False'}, id="sc5")
-        for _ in xrange(500):
+        for _ in range(500):
             j = Job(TEST_USER1, attrs={ATTR_queue: 'wq3'})
             self.server.submit(j)
         self.server.manager(MGR_CMD_SET, SCHED,
@@ -374,7 +375,7 @@ class TestMultipleSchedulers(TestFunctional):
     def test_preemption_highp_queue(self):
         """
         Test preemption occures only within queues which are assigned
-        to same partition and check for equivalence classes
+        to same partition
         """
         self.common_setup()
         prio = {'Priority': 150, 'partition': 'P1'}
@@ -383,14 +384,12 @@ class TestMultipleSchedulers(TestFunctional):
                                    'Resource_List.select': '1:ncpus=2'})
         jid1 = self.server.submit(j)
         self.server.expect(JOB, {'job_state': 'R'}, id=jid1)
-        t = int(time.time())
+
+        t = time.time()
         j = Job(TEST_USER1, attrs={ATTR_queue: 'wq4',
                                    'Resource_List.select': '1:ncpus=2'})
         jid2 = self.server.submit(j)
-        self.server.manager(MGR_CMD_SET, SCHED,
-                            {'scheduling': 'True'}, id="sc1")
-        self.scheds['sc1'].log_match("Number of job equivalence classes: 1",
-                                     max_attempts=10, starttime=t)
+
         self.server.expect(JOB, {'job_state': 'R'}, id=jid2)
         j = Job(TEST_USER1, attrs={ATTR_queue: 'wq4',
                                    'Resource_List.select': '1:ncpus=2'})
@@ -401,9 +400,6 @@ class TestMultipleSchedulers(TestFunctional):
         self.scheds['sc1'].log_match(
             jid1 + ';Job preempted by suspension',
             max_attempts=10, starttime=t)
-        # Two equivalence class one for suspended and one for remaining jobs
-        self.scheds['sc1'].log_match("Number of job equivalence classes: 2",
-                                     max_attempts=10, starttime=t)
 
     def test_preemption_two_sched(self):
         """
@@ -690,20 +686,20 @@ class TestMultipleSchedulers(TestFunctional):
         sc3_fs = self.scheds['sc3'].query_fairshare()
 
         n = default_fs.get_node(id=10)
-        self.assertEquals(n.nshares, default_shares)
-        self.assertEquals(n.usage, default_usage)
+        self.assertEqual(n.nshares, default_shares)
+        self.assertEqual(n.usage, default_usage)
 
         n = sc1_fs.get_node(id=10)
-        self.assertEquals(n.nshares, sc1_shares)
-        self.assertEquals(n.usage, sc1_usage)
+        self.assertEqual(n.nshares, sc1_shares)
+        self.assertEqual(n.usage, sc1_usage)
 
         n = sc2_fs.get_node(id=10)
-        self.assertEquals(n.nshares, sc2_shares)
-        self.assertEquals(n.usage, sc2_usage)
+        self.assertEqual(n.nshares, sc2_shares)
+        self.assertEqual(n.usage, sc2_usage)
 
         n = sc3_fs.get_node(id=10)
-        self.assertEquals(n.nshares, sc3_shares)
-        self.assertEquals(n.usage, sc3_usage)
+        self.assertEqual(n.nshares, sc3_shares)
+        self.assertEqual(n.usage, sc3_usage)
 
     def test_fairshare_usage(self):
         """
@@ -776,13 +772,13 @@ class TestMultipleSchedulers(TestFunctional):
         self.server.delete(sc1_jid2, wait=True)
         # query fairshare and check usage
         sc1_fs_user1 = self.scheds['sc1'].query_fairshare(name=str(TEST_USER1))
-        self.assertEquals(sc1_fs_user1.usage, 101)
+        self.assertEqual(sc1_fs_user1.usage, 101)
         sc1_fs_user2 = self.scheds['sc1'].query_fairshare(name=str(TEST_USER2))
-        self.assertEquals(sc1_fs_user2.usage, 101)
+        self.assertEqual(sc1_fs_user2.usage, 101)
         sc1_fs_user3 = self.scheds['sc1'].query_fairshare(name=str(TEST_USER3))
-        self.assertEquals(sc1_fs_user3.usage, 101)
+        self.assertEqual(sc1_fs_user3.usage, 101)
         sc1_fs_user4 = self.scheds['sc1'].query_fairshare(name=str(TEST_USER4))
-        self.assertEquals(sc1_fs_user4.usage, 1)
+        self.assertEqual(sc1_fs_user4.usage, 1)
         # Restart the scheduler
         self.scheds['sc1'].restart()
         # Check the multisched 'sc1' usage file whether it's updating or not
@@ -819,13 +815,13 @@ class TestMultipleSchedulers(TestFunctional):
         self.server.delete(sc1_jid2, wait=True)
         # query fairshare and check usage
         sc1_fs_user1 = self.scheds['sc1'].query_fairshare(name=str(TEST_USER1))
-        self.assertEquals(sc1_fs_user1.usage, 201)
+        self.assertEqual(sc1_fs_user1.usage, 201)
         sc1_fs_user2 = self.scheds['sc1'].query_fairshare(name=str(TEST_USER2))
-        self.assertEquals(sc1_fs_user2.usage, 201)
+        self.assertEqual(sc1_fs_user2.usage, 201)
         sc1_fs_user3 = self.scheds['sc1'].query_fairshare(name=str(TEST_USER3))
-        self.assertEquals(sc1_fs_user3.usage, 101)
+        self.assertEqual(sc1_fs_user3.usage, 101)
         sc1_fs_user4 = self.scheds['sc1'].query_fairshare(name=str(TEST_USER4))
-        self.assertEquals(sc1_fs_user4.usage, 101)
+        self.assertEqual(sc1_fs_user4.usage, 101)
 
     def test_sched_priv_change(self):
         """
@@ -889,7 +885,7 @@ class TestMultipleSchedulers(TestFunctional):
         self.scheds['sc3'].set_fairshare_usage(name=TEST_USER2, usage=100)
 
         user = self.scheds['sc3'].cmp_fairshare_entities(TEST_USER, TEST_USER2)
-        self.assertEquals(user, str(TEST_USER))
+        self.assertEqual(user, str(TEST_USER))
 
     def test_pbsfs_invalid_sched(self):
         """
@@ -900,7 +896,7 @@ class TestMultipleSchedulers(TestFunctional):
                                  'sbin', 'pbsfs') + ' -I ' + sched_name
         ret = self.du.run_cmd(cmd=pbsfs_cmd, sudo=True)
         err_msg = 'Scheduler %s does not exist' % sched_name
-        self.assertEquals(err_msg, ret['err'][0])
+        self.assertEqual(err_msg, ret['err'][0])
 
     def test_pbsfs_no_fairshare_data(self):
         """
@@ -974,7 +970,7 @@ class TestMultipleSchedulers(TestFunctional):
             allmatch=True, endtime=t_end)
 
         # job 1 runs second as it's run by an entity with usage = 100
-        self.assertTrue(jid1 in job_list[0][1])
+        self.assertTrue(jid1 in job_list[-1][1])
 
         self.server.deljob(id=jid1, wait=True)
         self.server.deljob(id=jid2, wait=True)
@@ -1012,7 +1008,7 @@ class TestMultipleSchedulers(TestFunctional):
             'Considering job to run', starttime=t_start,
             allmatch=True, endtime=t_end)
 
-        self.assertTrue(jid2 in job_list[0][1])
+        self.assertTrue(jid2 in job_list[-1][1])
 
     def submit_jobs(self, num_jobs=1, attrs=None, user=TEST_USER):
         """
@@ -1063,7 +1059,7 @@ class TestMultipleSchedulers(TestFunctional):
         self.setup_sc1()
         self.setup_sc2()
         self.setup_queues_nodes()
-        self.scheds['sc2'].set_sched_config({'log_filter': 2048})
+        self.server.manager(MGR_CMD_SET, SCHED, {'log_events': 2047}, id='sc2')
         t = int(time.time())
         self.server.manager(MGR_CMD_SET, SCHED,
                             {'scheduling': 'False'}, id="sc1")
@@ -1557,7 +1553,7 @@ class TestMultipleSchedulers(TestFunctional):
             a['partition'] = 'P2'
         if numnode is 11:
             a['partition'] = 'P2'
-        return dict(attrib.items() + a.items())
+        return {**attrib, **a}
 
     def setup_placement_set(self):
         self.server.add_resource('switch', 'string_array', 'h')
@@ -1879,7 +1875,8 @@ class TestMultipleSchedulers(TestFunctional):
         and check whether they are actually be effective
         """
         self.setup_sc3()
-        self.scheds['sc3'].set_sched_config({'log_filter': 2048})
+        self.server.manager(MGR_CMD_SET, SCHED, {'log_events': 2047}, id='sc3')
+
         self.server.manager(MGR_CMD_SET, SCHED,
                             {'scheduling': 'False'}, id="sc3")
 
@@ -1909,9 +1906,8 @@ class TestMultipleSchedulers(TestFunctional):
         and check whether they are actually be effective
         """
         self.setup_sc3()
-        self.scheds['sc3'].set_sched_config({'log_filter': 2048})
-        self.server.manager(MGR_CMD_SET, SCHED,
-                            {'scheduling': 'False'}, id="sc3")
+        self.server.manager(MGR_CMD_SET, SCHED, {'scheduling': 'False',
+                            'log_events': 2047}, id="sc3")
 
         # create and set-up a new priv directory for sc3
         new_sched_priv = os.path.join(self.server.pbs_conf['PBS_HOME'],

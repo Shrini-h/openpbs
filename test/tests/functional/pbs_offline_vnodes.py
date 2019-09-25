@@ -130,7 +130,7 @@ class TestOfflineVnode(TestFunctional):
         TestFunctional.tearDown(self)
 
         # Restore original node setup for future test cases.
-        self.server.cleanup_jobs(extend='force')
+        self.server.cleanup_jobs()
         self.server.manager(MGR_CMD_DELETE, NODE, id="@default")
         for m in self.moms.values():
             self.server.manager(MGR_CMD_CREATE, NODE,
@@ -199,6 +199,7 @@ class TestOfflineVnode(TestFunctional):
                            id=single_mom.shortname, interval=2)
         self.server.expect(JOB, {ATTR_state: 'R'}, id=jid2)
 
+    @requirements(num_moms=2)
     def test_multi_mom_hook_failure_affects_vnode(self):
         """
         Run an execjob_begin hook that sleeps for sometime,
@@ -265,6 +266,7 @@ class TestOfflineVnode(TestFunctional):
 
         self.verify_vnodes_state('free')
 
+    @requirements(num_moms=2)
     def test_multi_mom_hook_failure_affects_vnode2(self):
         """
         Run an execjob_begin hook that gets an exception
@@ -385,6 +387,7 @@ class TestOfflineVnode(TestFunctional):
 
         self.verify_vnodes_state('offline')
 
+    @requirements(num_moms=2)
     def test_pbsnodes_o_multi_mom_only_one_offline(self):
         """
         Offline one mom using pbsnodes -o.
@@ -429,6 +432,7 @@ class TestOfflineVnode(TestFunctional):
 
         self.verify_vnodes_state('free')
 
+    @requirements(num_moms=2)
     def test_pbsnodes_multi_mom_offline_online(self):
         """
         When all of the moms reporting a vnode are offline,

@@ -64,6 +64,7 @@ def create_subjob_id(job_array_id, subjob_index):
     return job_array_id[:idx + 1] + str(subjob_index) + job_array_id[idx + 1:]
 
 
+@requirements(num_moms=5)
 class TestPbsReliableJobStartup(TestFunctional):
 
     """
@@ -242,7 +243,7 @@ class TestPbsReliableJobStartup(TestFunctional):
         TestFunctional.setUp(self)
         Job.dflt_attributes[ATTR_k] = 'oe'
 
-        self.server.cleanup_jobs(extend="force")
+        self.server.cleanup_jobs()
 
         self.momA = self.moms.values()[0]
         self.momB = self.moms.values()[1]
@@ -1499,7 +1500,7 @@ pbs_tmrsh %s hostname
             job_out = fd.read()
             self.logger.info("job_out=%s" % (job_out,))
 
-        self.assertEquals(job_out, expected_out)
+        self.assertEqual(job_out, expected_out)
 
     @timeout(400)
     def test_t2(self):
@@ -1842,7 +1843,7 @@ pbs_tmrsh %s hostname
             job_out = fd.read()
             self.logger.info("job_out=%s" % (job_out,))
 
-        self.assertEquals(job_out, expected_out)
+        self.assertEqual(job_out, expected_out)
 
     @timeout(400)
     def test_t3(self):
@@ -2208,7 +2209,7 @@ pbs_tmrsh %s hostname
             job_out = fd.read()
             self.logger.info("job_out=%s" % (job_out,))
 
-        self.assertEquals(job_out, expected_out)
+        self.assertEqual(job_out, expected_out)
 
     @timeout(400)
     def test_t4(self):
@@ -2452,7 +2453,7 @@ pbs_tmrsh %s hostname
             job_out = fd.read()
             self.logger.info("job_out=%s" % (job_out,))
 
-        self.assertEquals(job_out, expected_out)
+        self.assertEqual(job_out, expected_out)
 
     @timeout(400)
     def test_t5(self):
@@ -2686,7 +2687,7 @@ pbs_tmrsh %s hostname
             job_out = fd.read()
             self.logger.info("job_out=%s" % (job_out,))
 
-        self.assertEquals(job_out, expected_out)
+        self.assertEqual(job_out, expected_out)
 
     def test_t6(self):
         """
@@ -2948,7 +2949,7 @@ pbs_tmrsh %s hostname
             job_out = fd.read()
             self.logger.info("job_out=%s" % (job_out,))
 
-        self.assertEquals(job_out, expected_out)
+        self.assertEqual(job_out, expected_out)
 
     def test_t7(self):
         """
@@ -3360,7 +3361,7 @@ pbs_tmrsh %s hostname
             job_out = fd.read()
             self.logger.info("job_out=%s" % (job_out,))
 
-        self.assertEquals(job_out, expected_out)
+        self.assertEqual(job_out, expected_out)
 
     @timeout(400)
     def test_t9(self):
@@ -3617,7 +3618,7 @@ pbsdsh -n 2 hostname
             job_out = fd.read()
             self.logger.info("job_out=%s" % (job_out,))
 
-        self.assertEquals(job_out, expected_out)
+        self.assertEqual(job_out, expected_out)
         self.momD.start()
 
     def test_t10(self):
@@ -4475,7 +4476,7 @@ pbs_tmrsh %s hostname
             job_out = fd.read()
             self.logger.info("job_out=%s" % (job_out,))
 
-        self.assertEquals(job_out, expected_out)
+        self.assertEqual(job_out, expected_out)
 
     def test_t15(self):
         """
@@ -5157,7 +5158,7 @@ pbs_tmrsh %s hostname
         with open(job_output_file, 'r') as fd:
             job_out = fd.read()
 
-        self.assertEquals(job_out, expected_out)
+        self.assertEqual(job_out, expected_out)
 
         # Re-check vnode_list[] parameter in execjob_launch hook
         vnode_list = [self.nAv0, self.nAv1, self.nAv2,
@@ -5244,7 +5245,7 @@ pbs_tmrsh %s hostname
         with open(job_output_file, 'r') as fd:
             job_out = fd.read()
 
-        self.assertEquals(job_out, expected_out)
+        self.assertEqual(job_out, expected_out)
 
     def test_t19(self):
         """
@@ -5675,4 +5676,4 @@ pbs_tmrsh %s hostname
         with open(job_output_file, 'r') as fd:
             job_out = fd.read()
 
-        self.assertEquals(job_out, expected_out)
+        self.assertEqual(job_out, expected_out)

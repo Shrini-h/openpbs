@@ -179,6 +179,7 @@ class TestPbsExecjobEnd(TestFunctional):
         self.mom.log_match("Job;%s;execjob_end hook ended" % jid2,
                            n=100, max_attempts=10, interval=2)
 
+    @requirements(num_moms=2)
     def test_execjob_end_non_blocking_multi_node(self):
         """
         Test to make sure sister mom is unblocked
@@ -203,7 +204,7 @@ class TestPbsExecjobEnd(TestFunctional):
         j.set_sleep_time(1)
         self.server.create_import_hook(hook_name, attr, hook_body)
         jid = self.server.submit(j)
-        for host, mom in self.moms.iteritems():
+        for host, mom in self.moms.items():
             (_, str1) = mom.log_match("Job;%s;executed execjob_end hook" %
                                       jid, n=100, max_attempts=10,
                                       interval=2)
@@ -227,6 +228,7 @@ class TestPbsExecjobEnd(TestFunctional):
                 "exechost_periodic at: %s and execjob_end hook ended at: %s" %
                 (date_time1, date_time2, date_time3))
 
+    @requirements(num_moms=2)
     def test_execjob_end_delete_request(self):
         """
         Test to make sure execjob_end hook is running
@@ -248,7 +250,7 @@ class TestPbsExecjobEnd(TestFunctional):
         jid = self.server.submit(j)
         self.server.expect(JOB, {'job_state': 'R'}, id=jid)
         self.server.deljob(id=jid, wait=True, attr_W="force")
-        for host, mom in self.moms.iteritems():
+        for host, mom in self.moms.items():
             mom.log_match("Job;%s;executed execjob_end hook" %
                           jid, n=100, max_attempts=10,
                           interval=2)
@@ -258,6 +260,7 @@ class TestPbsExecjobEnd(TestFunctional):
             msg = "Got expected log_msg on host:%s" % host
             self.logger.info(msg)
 
+    @requirements(num_moms=2)
     def test_execjob_end_reject_request(self):
         """
         Test to make sure hook job reject message should appear in mom log

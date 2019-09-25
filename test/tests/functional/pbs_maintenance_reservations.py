@@ -66,7 +66,7 @@ class TestMaintenanceReservations(TestFunctional):
         except PbsSubmitError as err:
             msg = err.msg[0].strip()
 
-        self.assertEquals("pbs_rsub: Unauthorized Request", msg)
+        self.assertEqual("pbs_rsub: Unauthorized Request", msg)
 
     def test_maintenance_forbidden_resources(self):
         """
@@ -90,7 +90,7 @@ class TestMaintenanceReservations(TestFunctional):
         except PbsSubmitError as err:
             msg = err.msg[0].strip()
 
-        self.assertEquals("pbs_rsub: can't use -l select with --hosts", msg)
+        self.assertEqual("pbs_rsub: can't use -l select with --hosts", msg)
 
         a = {'Resource_List.place': 'scatter',
              'reserve_start': now + 3600,
@@ -105,7 +105,7 @@ class TestMaintenanceReservations(TestFunctional):
         except PbsSubmitError as err:
             msg = err.msg[0].strip()
 
-        self.assertEquals("pbs_rsub: can't use -l place with --hosts", msg)
+        self.assertEqual("pbs_rsub: can't use -l place with --hosts", msg)
 
     def test_maintenance_missing_hosts(self):
         """
@@ -129,7 +129,7 @@ class TestMaintenanceReservations(TestFunctional):
         except PbsSubmitError as err:
             msg = err.msg[0].strip()
 
-        self.assertEquals("pbs_rsub: missing host(s)", msg)
+        self.assertEqual("pbs_rsub: missing host(s)", msg)
 
         a = {'reserve_start': now + 3600,
              'reserve_end': now + 7200}
@@ -143,7 +143,7 @@ class TestMaintenanceReservations(TestFunctional):
         except PbsSubmitError as err:
             msg = err.msg[0].strip()
 
-        self.assertEquals("pbs_rsub: missing host(s)", msg)
+        self.assertEqual("pbs_rsub: missing host(s)", msg)
 
     def test_maintenance_confirm(self):
         """
@@ -162,9 +162,10 @@ class TestMaintenanceReservations(TestFunctional):
         self.server.create_vnodes('vn', a, num=2, mom=self.mom)
 
         a = {'resv_enable': False}
-        self.server.manager(MGR_CMD_SET, NODE, a, id=self.mom.shortname)
-        self.server.manager(MGR_CMD_SET, NODE, a, 'vn[0]')
-        self.server.manager(MGR_CMD_SET, NODE, a, 'vn[1]')
+        self.server.manager(MGR_CMD_SET, NODE, a,
+                            id=self.mom.shortname, runas=TEST_USER)
+        self.server.manager(MGR_CMD_SET, NODE, a, 'vn[0]', runas=TEST_USER)
+        self.server.manager(MGR_CMD_SET, NODE, a, 'vn[1]', runas=TEST_USER)
 
         a = {'reserve_start': now + 3600,
              'reserve_end': now + 7200}
@@ -362,6 +363,7 @@ class TestMaintenanceReservations(TestFunctional):
                     'reserve_substate': 2}
         self.server.expect(RESV, exp_attr, id=rid1)
 
+    @requirements(num_moms=2)
     def test_maintenance_two_hosts(self):
         """
         Test if the maintenance reservation is confirmed on multiple hosts.
@@ -406,6 +408,7 @@ class TestMaintenanceReservations(TestFunctional):
                     'Resource_List.place': 'exclhost'}
         self.server.expect(RESV, exp_attr, id=rid)
 
+    @requirements(num_moms=2)
     def test_maintenance_reconfirm_reservation_and_run(self):
         """
         Test if the overlapping reservation is reconfirmed correctly.
@@ -420,7 +423,7 @@ class TestMaintenanceReservations(TestFunctional):
         now = int(time.time())
 
         self.server.manager(MGR_CMD_SET, SERVER,
-                            {'managers': '%s@*' % TEST_USER})
+                            {'managers': (INCR, '%s@*' % TEST_USER)})
         self.server.manager(MGR_CMD_SET, SERVER,
                             {'scheduler_iteration': 3})
 
@@ -479,6 +482,7 @@ class TestMaintenanceReservations(TestFunctional):
                     'exec_vnode': "(%s:ncpus=1)" % self.momA.shortname}
         self.server.expect(JOB, exp_attr, id=jid2)
 
+    @requirements(num_moms=2)
     def test_maintenance_progressive_degrade_reservation(self):
         """
         Test if the reservation is partially degraded by overlapping

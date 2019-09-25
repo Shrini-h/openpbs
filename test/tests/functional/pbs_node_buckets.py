@@ -78,7 +78,7 @@ class TestNodeBuckets(TestFunctional):
 
         self.scheduler.add_resource('color')
 
-        self.scheduler.set_sched_config({'log_filter': '2048'})
+        self.server.manager(MGR_CMD_SET, SCHED, {'log_events': 2047})
 
     def cust_attr_func(self, name, totalnodes, numnode, attribs):
         """
@@ -86,18 +86,17 @@ class TestNodeBuckets(TestFunctional):
         nodes of each color, letter, and shape.  The value of bool is True
         for the last 5005 nodes and unset for the first 5005 nodes
         """
-        a = {'resources_available.color': self.colors[numnode / 1430],
+        a = {'resources_available.color': self.colors[numnode // 1430],
              'resources_available.shape': self.shapes[numnode % 7],
              'resources_available.letter': self.letters[numnode % 7]}
 
-        if numnode / 5005 == 0:
+        if numnode // 5005 == 0:
             a['resources_available.bool'] = 'True'
 
         # Yellow buckets get a higher priority
-        if numnode / 1430 == 2:
+        if numnode // 1430 == 2:
             a['Priority'] = 100
-
-        return dict(attribs.items() + a.items())
+        return {**attribs, **a}
 
     def check_normal_path(self, sel='2:ncpus=2:mem=1gb', pl='scatter:excl',
                           queue='workq'):
@@ -370,14 +369,14 @@ class TestNodeBuckets(TestFunctional):
         # Running a 10010 cpu job through the normal code path spams the log.
         # We don't care about it, so there is no reason to increase
         # the log size by so much.
-        self.scheduler.set_sched_config({'log_filter': '3328'})
+        self.server.manager(MGR_CMD_SET, SCHED, {'log_events': 767})
         # Run a job on all nodes leaving 1 cpus available on each node
         j = Job(TEST_USER, {'Resource_List.select': '10010:ncpus=1',
                             'Resource_List.place': 'scatter'})
         j.set_sleep_time(600)
         jid = self.server.submit(j)
         self.server.expect(JOB, {'job_state': 'R'}, id=jid)
-        self.scheduler.set_sched_config({'log_filter': '2048'})
+        self.server.manager(MGR_CMD_SET, SCHED, {'log_events': 2047})
 
         # Node sorting via unused resources uses the standard code path
         self.logger.info('Test node_sort_key with unused resources')
@@ -386,8 +385,7 @@ class TestNodeBuckets(TestFunctional):
         self.check_normal_path()
 
         self.scheduler.revert_to_defaults()
-        schd_attr = {'log_filter': '2048'}
-        self.scheduler.set_sched_config(schd_attr)
+        self.server.manager(MGR_CMD_SET, SCHED, {'log_events': 2047})
 
         # provisioning_policy: avoid_provisioning uses the standard code path
         self.logger.info('Test avoid_provision')
@@ -397,7 +395,7 @@ class TestNodeBuckets(TestFunctional):
 
         self.scheduler.revert_to_defaults()
         self.scheduler.add_resource('color')
-        self.scheduler.set_sched_config(schd_attr)
+        self.server.manager(MGR_CMD_SET, SCHED, {'log_events': 2047})
 
         # the bucket codepath requires excl
         self.logger.info('Test different place specs')
@@ -561,8 +559,8 @@ class TestNodeBuckets(TestFunctional):
 
         c1 = n1[0]['resources_available.color']
         c2 = n2[0]['resources_available.color']
-        self.assertEquals(c1, 'yellow', "Job didn't run on yellow nodes")
-        self.assertEquals(c2, 'yellow', "Job didn't run on yellow nodes")
+        self.assertEqual(c1, 'yellow', "Job didn't run on yellow nodes")
+        self.assertEqual(c2, 'yellow', "Job didn't run on yellow nodes")
 
     @timeout(450)
     def test_psets(self):
@@ -832,8 +830,8 @@ class TestNodeBuckets(TestFunctional):
         n2 = j1.get_vnodes(s2[0]['exec_vnode'])
 
         msg = 'job did not run on correct number of nodes'
-        self.assertEquals(len(n1), 715, msg)
-        self.assertEquals(len(n2), 715, msg)
+        self.assertEqual(len(n1), 715, msg)
+        self.assertEqual(len(n2), 715, msg)
 
         for node in n1:
             self.assertTrue(node not in n2, 'Jobs share nodes: ' + node)
