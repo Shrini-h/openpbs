@@ -6010,7 +6010,6 @@ recreate_exec_vnode(job *pjob, char *vnodelist, char *keep_select, char *err_msg
 
 		rc = pbs_release_nodes_given_nodelist(&r_input, &r_input_vnlist, err_msg, err_msg_sz);
 	} else {
-		//TODO: validate keep_select ! try using validate_perm_res_in_select
 		relnodes_input_select_init(&r_input_keep_select);
 		r_input_keep_select.select_str = keep_select;
 		//TODO: populate with all moms: pbs_list_head	*succeeded_mom_list;

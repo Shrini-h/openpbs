@@ -78,7 +78,7 @@ static void post_message_req(struct work_task *);
 extern char *msg_messagejob;
 
 extern job  *chk_job_request(char *, struct batch_request *, int *, int *);
-
+extern int  validate_perm_res_in_select(char *val, int val_exist);
 
 
 /**
@@ -344,6 +344,12 @@ req_relnodesjob(struct batch_request *preq)
 	}
 
 	keep_select = preq->rq_extend;
+
+	if(keep_select && *keep_select)
+		if ((rc = validate_perm_res_in_select(strchr(keep_select, '=') + 1, 1))) {
+			req_reject(rc, 0, preq);
+			return;
+		}
 
 	rc = free_sister_vnodes(pjob, nodeslist, keep_select, msg, LOG_BUF_SIZE, preq);
 
