@@ -5904,6 +5904,45 @@ send_job_exec_update_exit:
 }
 
 /**
+ *
+ * @brief
+ *	Extracts mom hostnames from exechostx and adds it to list
+ *
+ * @param[in/out]	to_head - destination reliable_job_node list
+ * @param[in]	exechostx - string in exechost format
+ *
+ * @return 	void
+ */
+static void
+populate_mom_list(pbs_list_head *to_head, char *exechostx)
+{
+	char *hostn = NULL, *last = NULL, *peh;
+	int	hasprn = 0;
+
+	if ((to_head == NULL) || (exechostx == NULL) || !*exechostx)
+		return;
+
+	peh = strdup(exechostx);
+	if (peh == NULL) {
+		log_err(errno, __func__, "strdup error");
+		return;
+	}
+
+	CLEAR_HEAD((*to_head));
+
+	for (hostn = parse_plus_spec_r(peh, &last, &hasprn);
+			hostn;
+			hostn = parse_plus_spec_r(last, &last, &hasprn) ) {
+		if (reliable_job_node_add(to_head, strtok(hostn, ":/")) == -1) {
+			free(peh);
+			return;
+		}
+	}
+	free(peh);
+	return;
+}
+
+/**
  * @brief
  *	Recreates the pjob's exec_vnode, updating at the same time
  *	its corresponding exec_host and exec_host2 attributes
@@ -5945,6 +5984,7 @@ recreate_exec_vnode(job *pjob, char *vnodelist, char *keep_select, char *err_msg
 	relnodes_input_t		r_input;
 	relnodes_input_vnodelist_t	r_input_vnlist;
 	relnodes_input_select_t r_input_keep_select;
+	pbs_list_head	succeeded_mom_list;
 
 	if (pjob == NULL) {
 		log_err(-1, __func__, "bad job parameter");
@@ -6012,7 +6052,8 @@ recreate_exec_vnode(job *pjob, char *vnodelist, char *keep_select, char *err_msg
 	} else {
 		relnodes_input_select_init(&r_input_keep_select);
 		r_input_keep_select.select_str = keep_select;
-		//TODO: populate with all moms: pbs_list_head	*succeeded_mom_list;
+		populate_mom_list(&succeeded_mom_list, exec_host2);
+		r_input_keep_select.succeeded_mom_list = &succeeded_mom_list;
 
 		rc = pbs_release_nodes_given_select(&r_input, &r_input_keep_select, err_msg, err_msg_sz);
 	}
