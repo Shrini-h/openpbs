@@ -3324,6 +3324,7 @@ pbs_release_nodes_given_select(relnodes_input_t *r_input, relnodes_input_select_
 	momvmap_t 	*vn_vmap = NULL;
 #else
 	struct pbsnode	*pnode = NULL;
+	char		e2buf[PBS_MAXHOSTNAME+1+6+16];
 #endif
 
 	if ((r_input == NULL) || (r_input2 == NULL) || (r_input->jobid == NULL) || (r_input->execvnode == NULL) || (r_input->exechost == NULL) || (r_input->exechost2 == NULL) || (err_msg == NULL) || (err_msg_sz <= 0)) {
@@ -3412,6 +3413,7 @@ pbs_release_nodes_given_select(relnodes_input_t *r_input, relnodes_input_select_
 
 			strncpy(prev_noden, noden, PBS_MAXNODENAME);
 #else
+			e2buf[0] = '\0';
 			if (r_input->vnodes_data != NULL) {
 				/* see if previous entry already matches this */
 				if ((strcmp(prev_noden, noden) != 0)) {
@@ -3422,15 +3424,6 @@ pbs_release_nodes_given_select(relnodes_input_t *r_input, relnodes_input_select_
 					if ((svrattrl_e = find_svrattrl_list_entry(r_input->vnodes_data, key_buf, "host,string")) != NULL) {
 						parent_mom = svrattrl_e->al_value;
 					}
-				}
-
-				if (parent_mom == NULL) { /* should not happen */
-
-					if ((err_msg != NULL) && (err_msg_sz > 0)) {
-						snprintf(err_msg, err_msg_sz, "no parent_mom for for %s", noden);
-        					log_event(PBSEVENT_DEBUG2, PBS_EVENTCLASS_JOB, LOG_DEBUG, r_input->jobid, err_msg);
-					}
-					goto release_nodes_exit;
 				}
 
 				strncpy(prev_noden, noden, PBS_MAXNODENAME);
@@ -3448,6 +3441,30 @@ pbs_release_nodes_given_select(relnodes_input_t *r_input, relnodes_input_select_
 					}
 					goto release_nodes_exit;
 				}
+
+				parent_mom = NULL;
+
+				if (chunk2 && *chunk2) {
+					char *tmp;
+					int	i;
+					snprintf(e2buf, sizeof(e2buf), "%s", chunk2);
+					tmp = strtok(e2buf, ":/");
+
+					for (i = 0; tmp && (i < pnode->nd_nummoms); i++) {
+						if ((strcmp(pnode->nd_moms[i]->mi_host, tmp) == 0)) {
+							parent_mom = tmp;
+						}
+					}
+				}
+			}
+
+			if (parent_mom == NULL) { /* should not happen */
+
+				if ((err_msg != NULL) && (err_msg_sz > 0)) {
+					snprintf(err_msg, err_msg_sz, "no parent_mom for for %s", noden);
+    					log_event(PBSEVENT_DEBUG2, PBS_EVENTCLASS_JOB, LOG_DEBUG, r_input->jobid, err_msg);
+				}
+				goto release_nodes_exit;
 			}
 #endif
 
