@@ -6062,7 +6062,7 @@ recreate_exec_vnode(job *pjob, char *vnodelist, char *keep_select, char *err_msg
 		goto recreate_exec_vnode_exit;
 	}
 
-	if (new_exec_vnode[0] != '\0') {
+	if (new_exec_vnode && (new_exec_vnode[0] != '\0')) {
 
 		if (strcmp(pjob->ji_wattr[(int) JOB_ATR_exec_vnode].at_val.at_str,
 						 new_exec_vnode) == 0) {
@@ -6106,9 +6106,12 @@ recreate_exec_vnode(job *pjob, char *vnodelist, char *keep_select, char *err_msg
 		(void)update_resources_list(pjob, ATTR_l,
 			JOB_ATR_resource, new_exec_vnode, INCR, 0,
 				JOB_ATR_resource_orig);
+	} else {
+		log_err(-1, __func__, "new_exec_vnode is null or empty string");
+		goto recreate_exec_vnode_exit;
 	}
 
-	if (new_deallocated_execvnode[0] != '\0') {
+	if ((keep_select == NULL) && new_deallocated_execvnode && new_deallocated_execvnode[0] != '\0') {
 		(void)job_attr_def[(int)JOB_ATR_exec_vnode_deallocated].at_decode(
 			&pjob->ji_wattr[(int)JOB_ATR_exec_vnode_deallocated],
 			NULL,
@@ -6117,7 +6120,7 @@ recreate_exec_vnode(job *pjob, char *vnodelist, char *keep_select, char *err_msg
 		pjob->ji_modified = 1;
 	}
 
-	if (new_exec_host[0] != '\0') {
+	if (new_exec_host && (new_exec_host[0] != '\0')) {
 
 		(void)job_attr_def[(int)JOB_ATR_exec_host_acct].at_decode(
 			&pjob->ji_wattr[(int)JOB_ATR_exec_host_acct],
@@ -6140,9 +6143,12 @@ recreate_exec_vnode(job *pjob, char *vnodelist, char *keep_select, char *err_msg
 			NULL,
 			new_exec_host);
 		pjob->ji_modified = 1;
+	} else {
+		log_err(-1, __func__, "new_exec_host is null or empty string");
+		goto recreate_exec_vnode_exit;
 	}
 
-	if (new_exec_host2[0] != '\0') {
+	if (new_exec_host2 && (new_exec_host2[0] != '\0')) {
 
 		(void)job_attr_def[(int)JOB_ATR_exec_host2].at_decode(
 			&pjob->ji_wattr[(int)JOB_ATR_exec_host2],
@@ -6150,9 +6156,12 @@ recreate_exec_vnode(job *pjob, char *vnodelist, char *keep_select, char *err_msg
 			NULL,
 			new_exec_host2);
 		pjob->ji_modified = 1;
+	} else {
+		log_err(-1, __func__, "new_exec_host2 is null or empty string");
+		goto recreate_exec_vnode_exit;
 	}
 
-	if (new_select[0] != '\0') {
+	if (new_select && (new_select[0] != '\0')) {
 		prdefsl = find_resc_def(svr_resc_def, "select",
 							svr_resc_size);
 		/* re-generate "select" resource */
@@ -6190,13 +6199,21 @@ recreate_exec_vnode(job *pjob, char *vnodelist, char *keep_select, char *err_msg
 		(void)set_chunk_sum(&pjob->ji_wattr[(int)JOB_ATR_SchedSelect],
 					&pjob->ji_wattr[(int)JOB_ATR_resource]);
 
+	} else {
+		log_err(-1, __func__, "new_select is null or empty string");
+		goto recreate_exec_vnode_exit;
 	}
 recreate_exec_vnode_exit:
-	free(new_exec_vnode);
-	free(new_exec_host);
-	free(new_exec_host2);
-	free(new_select);
-	free(new_deallocated_execvnode);
+	if (new_exec_vnode)
+		free(new_exec_vnode);
+	if (new_exec_host)
+		free(new_exec_host);
+	if (new_exec_host2)
+		free(new_exec_host2);
+	if (new_select)
+		free(new_select);
+	if (new_deallocated_execvnode)
+		free(new_deallocated_execvnode);
 
 	return (rc);
 }
