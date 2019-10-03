@@ -5944,6 +5944,47 @@ populate_mom_list(pbs_list_head *to_head, char *exechostx)
 
 /**
  * @brief
+ *	returns a copy of partial select string representing the MS (first) chunk
+ *	Note - caller to free the returned string pointer
+ *
+ * @param[in]		select_str - pointer to complete schedselect string
+ *
+ * @return char *
+ * @retval ptr	pointer to malloc'd string containing ms (first) chunk's select str
+ *
+ * @note
+ * caller to free the returned string pointer
+*/
+static char *
+get_ms_select_chunk(char *select_str)
+{
+	char *slast, *selbuf, *psubspec, *retval = NULL;
+	int hpn;
+
+    if (select_str == NULL) {
+            log_err(-1, __func__, "bad param passed");
+	return (NULL);
+    }
+
+    selbuf = strdup(select_str);
+    if (selbuf == NULL) {
+            log_err(errno, __func__, "strdup fail");
+	return (NULL);
+    }
+    psubspec = parse_plus_spec_r(selbuf, &slast, &hpn);
+
+    if (psubspec) {
+    	while(*psubspec && !isalpha(*(psubspec++))) ; /* one line loop */
+
+    	if (!(retval = strdup(--psubspec)))
+    		log_err(errno, __func__, "strdup fail");
+    }
+
+    free(selbuf);
+    return retval;
+}
+/**
+ * @brief
  *	Recreates the pjob's exec_vnode, updating at the same time
  *	its corresponding exec_host and exec_host2 attributes
  *	by taking out the vnodes managed by sister moms.
@@ -6050,12 +6091,16 @@ recreate_exec_vnode(job *pjob, char *vnodelist, char *keep_select, char *err_msg
 
 		rc = pbs_release_nodes_given_nodelist(&r_input, &r_input_vnlist, err_msg, err_msg_sz);
 	} else {
+		int select_str_sz = 0;
 		relnodes_input_select_init(&r_input_keep_select);
-		r_input_keep_select.select_str = keep_select;
+		r_input_keep_select.select_str = get_ms_select_chunk(schedselect);  /* has to be freed later */
+		pbs_strcat(&r_input_keep_select.select_str, &select_str_sz, "+");
+		pbs_strcat(&r_input_keep_select.select_str, &select_str_sz, keep_select);
 		populate_mom_list(&succeeded_mom_list, exec_host2);
 		r_input_keep_select.succeeded_mom_list = &succeeded_mom_list;
 
 		rc = pbs_release_nodes_given_select(&r_input, &r_input_keep_select, err_msg, err_msg_sz);
+		free(r_input_keep_select.select_str);
 	}
 
 	if (rc != 0) {
