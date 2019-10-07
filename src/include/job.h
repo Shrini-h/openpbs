@@ -305,6 +305,7 @@ typedef struct resc_limit {		/* per node limits for Mom	*/
 	long long rl_vmem;		/* total mem space (virtual)	*/
 	int	  rl_naccels;		/* number of accelerators	*/
 	long long rl_accel_mem;		/* accelerator mem (real mem)	*/
+	pbs_list_head rl_oth_res;	/* list of all other resources including custom ones */
 	char	  *chunkstr;		/* chunk represented */
 	int	  chunkstr_sz;		/* size of chunkstr */
 	string_and_number_t host_chunk[2]; /* chunks representing exec_host/exec_host2  */

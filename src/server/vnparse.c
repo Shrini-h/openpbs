@@ -2615,6 +2615,7 @@ resc_limit_init(resc_limit_t *have)
 	have->rl_vmem = 0LL;
 	have->rl_naccels = 0;
 	have->rl_accel_mem = 0LL;
+	CLEAR_HEAD(have->rl_oth_res);
 	have->chunkstr = NULL;
 	have->chunkstr_sz = 0;
 	have->host_chunk[0].str = NULL;
@@ -2634,9 +2635,22 @@ resc_limit_init(resc_limit_t *have)
 void
 resc_limit_free(resc_limit_t *have)
 {
+	resource *next;
+	resource *pr;
+
 	if (have == NULL)
 		return;
 
+	pr = (resource *)GET_NEXT(have->rl_oth_res);
+	while (pr != NULL) {
+		next = (resource *)GET_NEXT(pr->rs_link);
+		free_svrattrl(pr->rs_value.at_priv_encoded);
+		delete_link(&pr->rs_link);
+		pr->rs_defin->rs_free(&pr->rs_value);
+		free(pr);
+		pr = next;
+	}
+	CLEAR_HEAD(have->rl_oth_res);
 	free(have->chunkstr);
 	have->chunkstr = NULL;
 	have->chunkstr_sz = 0;
@@ -2687,6 +2701,7 @@ resc_limit_list_print(char *header_str, pbs_list_head *res_list, int logtype)
 {
 	rl_entry		*p_entry = NULL;
 	int			i;
+	resource *phave;
 
 	if ((header_str == NULL) || (res_list == NULL))
 		return;
@@ -2712,6 +2727,14 @@ resc_limit_list_print(char *header_str, pbs_list_head *res_list, int logtype)
 				have->host_chunk[1].str?have->host_chunk[1].str:"");
 		log_event(logtype, PBS_EVENTCLASS_RESC,
 			LOG_INFO, __func__, log_buffer);
+		for (phave = (resource *)GET_NEXT(have->rl_oth_res);
+				phave;
+				phave = (resource *)GET_NEXT(phave->rs_link)) {
+			snprintf(log_buffer, sizeof(log_buffer), "%s[%d]: other res %s=%s",
+					header_str, i, phave->rs_defin->rs_name, phave->rs_value.at_priv_encoded->al_value);
+			log_event(logtype, PBS_EVENTCLASS_RESC,
+				LOG_INFO, __func__, log_buffer);
+		}
 		p_entry = (rl_entry *)GET_NEXT(p_entry->rl_link);
 		i++;
 	}
@@ -2838,7 +2861,7 @@ map_need_to_have_resources(char *buf, size_t buf_sz, char *have_resc,
 {
 
 	if ((buf == NULL) || (buf_sz == 0) || (have_resc == NULL) ||
-	     (have_val == NULL) | (need == NULL)) {
+	     (have_val == NULL) || (need == NULL)) {
 		return;
 	}
 
@@ -2862,6 +2885,7 @@ map_need_to_have_resources(char *buf, size_t buf_sz, char *have_resc,
 		sizemap_need_to_have_resources(buf, buf_sz,
 			have_resc, have_val, &need->rl_accel_mem);
 	}
+	// TODO: SHRINI map other resources
 }
 
 /**
@@ -2933,7 +2957,63 @@ add_to_vnl(vnl_t **vnlp, char *noden, char *keyw, char *keyval)
 	return (0);
 }
 
+#ifndef PBS_MOM
 /** 
+ * @brief
+ *	Check if remaining resources in 'have' satisfy the remaining
+ *	 resources from 'need'.
+ *
+ * @param[in]	need - the need value of resc_limit_t type.
+ * @param[in]	have - the have value of resc_limit_t type.
+ *
+ * @return int
+ *	1 - if not satisfied
+ *	0 - otherwise
+ */
+static int
+check_remaining_res(resc_limit_t *need, resc_limit_t *have)
+{
+	resource *pneed, *phave;
+	if (!GET_NEXT(need->rl_oth_res))
+		return 0;
+
+	if (!GET_NEXT(have->rl_oth_res))
+		return 1;
+
+	for (pneed = (resource *)GET_NEXT(need->rl_oth_res);
+			pneed;
+			pneed = (resource *)GET_NEXT(pneed->rs_link)) {
+		int matched = 0;
+		for (phave = (resource *)GET_NEXT(have->rl_oth_res);
+				phave;
+				phave = (resource *)GET_NEXT(phave->rs_link)) {
+			if (pneed->rs_defin == phave->rs_defin) {
+				resource_def *prdef = pneed->rs_defin;
+				unsigned int atr_type = prdef->rs_type;
+				if ((atr_type == ATR_TYPE_STR)
+						|| (atr_type == ATR_TYPE_ARST) /* currently impossible */
+						|| (atr_type == ATR_TYPE_BOOL)) {
+					if (!prdef->rs_comp(&pneed->rs_value, &phave->rs_value)) {
+						matched = 1;
+						break;
+					}
+				} else { /* for atr type long, float and size */
+					if (prdef->rs_comp(&pneed->rs_value, &phave->rs_value) <= 0) {
+						matched = 1;
+						break;
+					}
+				}
+			}
+		}
+		if (!matched)
+			return 1;
+	}
+
+	return 0;
+}
+#endif
+
+/**
  * @brief
  *	Return a string representing a chunk that satisfies 'need'
  *	 resources from the 'have' pool.
@@ -2942,7 +3022,7 @@ add_to_vnl(vnl_t **vnlp, char *noden, char *keyw, char *keyval)
  * @param[in]	have - the have value of resc_limit_t type.
  * @param[in]	vnlp - if not-NULL, add the vnodes and
  *			resources that satisfy 'need'
- *			reqeust against 'have' resources. 
+ *			request against 'have' resources.
  *
  * @return char *
  *	<chunk string> - if successful
@@ -2968,6 +3048,9 @@ satisfy_chunk_need(resc_limit_t *need, resc_limit_t *have, vnl_t **vnlp)
 	int		hasprn = 0;
 	int		j;
 	int		entry = 0;
+#ifndef PBS_MOM
+	resource *pneed, *pres;
+#endif
 
 	if ((need == NULL) || (have == NULL))
 		return (NULL);
@@ -2977,7 +3060,11 @@ satisfy_chunk_need(resc_limit_t *need, resc_limit_t *have, vnl_t **vnlp)
 	    (need->rl_ssi > have->rl_ssi) ||
 	    (need->rl_vmem > have->rl_vmem) ||
 	    (need->rl_naccels > have->rl_naccels) ||
-	    (need->rl_accel_mem > have->rl_accel_mem)) { 
+	    (need->rl_accel_mem > have->rl_accel_mem)
+#ifndef PBS_MOM
+		|| check_remaining_res(need,have)
+#endif
+		) {
 		return (NULL);
 	}
 
@@ -2994,6 +3081,22 @@ satisfy_chunk_need(resc_limit_t *need, resc_limit_t *have, vnl_t **vnlp)
 	map_need.rl_naccels = need->rl_naccels;
 	map_need.rl_accel_mem = need->rl_accel_mem;
 
+#ifndef PBS_MOM
+
+	for (pneed = (resource *)GET_NEXT(need->rl_oth_res);
+			pneed;
+			pneed = (resource *)GET_NEXT(pneed->rs_link)) {
+		pres = (resource *)calloc(1, sizeof(resource));
+		if (pres == NULL) {
+			log_err(-1, __func__, "unable to calloc resource");
+			return (NULL);
+		}
+		CLEAR_LINK(pres->rs_link);
+		pres->rs_defin = pneed->rs_defin;
+		append_link(&map_need.rl_oth_res, &pres->rs_link, NULL);
+		pres->rs_defin->rs_set(&pres->rs_value, &pneed->rs_value, SET);
+	}
+#endif
 	data_size = strlen(have->chunkstr) + 1;
 	if (data_size > ret_chunkstr_size ) {
 		char *tpbuf;
@@ -3325,6 +3428,7 @@ pbs_release_nodes_given_select(relnodes_input_t *r_input, relnodes_input_select_
 #else
 	struct pbsnode	*pnode = NULL;
 	char		e2buf[PBS_MAXHOSTNAME+1+6+16];
+	resource *pres;
 #endif
 
 	if ((r_input == NULL) || (r_input2 == NULL) || (r_input->jobid == NULL) || (r_input->execvnode == NULL) || (r_input->exechost == NULL) || (r_input->exechost2 == NULL) || (err_msg == NULL) || (err_msg_sz <= 0)) {
@@ -3581,6 +3685,57 @@ pbs_release_nodes_given_select(relnodes_input_t *r_input, relnodes_input_select_
 					} else if (
 						strcmp(pkvp[j].kv_keyw, "accelerator_memory") == 0) {
 						have->rl_accel_mem += to_kbsize(pkvp[j].kv_val);
+#ifndef PBS_MOM
+					} else {
+						for (pres = (resource *)GET_NEXT(have->rl_oth_res);
+								pres != NULL;
+								pres = (resource *)GET_NEXT(pres->rs_link)) {
+							if (strcasecmp(pkvp[j].kv_keyw, pres->rs_defin->rs_name))
+								break;
+						}
+
+						if (!pres) {
+							resource_def *prdef;
+							pres = (resource *)calloc(1, sizeof(resource));
+							if (pres == NULL) {
+								log_err(-1, __func__, "unable to calloc resource");
+								goto release_nodes_exit;
+							}
+							prdef = find_resc_def(svr_resc_def, pkvp[j].kv_keyw,
+									svr_resc_size);
+							if (prdef == NULL) {
+								log_err(-1, __func__, "resource_def not found");
+								free(pres);
+								goto release_nodes_exit;
+							}
+							CLEAR_LINK(pres->rs_link);
+							pres->rs_defin = prdef;
+							append_link(&have->rl_oth_res, &pres->rs_link, NULL);
+							prdef->rs_decode(&pres->rs_value, NULL, NULL, pkvp[j].kv_val);
+							prdef->rs_encode(&pres->rs_value, NULL, prdef->rs_name,
+									NULL, ATR_ENCODE_CLIENT, &pres->rs_value.at_priv_encoded);
+						} else {
+							unsigned int rs_type = pres->rs_defin->rs_type;
+							attribute tmp = {0};
+							pres->rs_defin->rs_decode(&tmp, NULL, NULL, pkvp[j].kv_val);
+							if ((rs_type == ATR_TYPE_LONG)
+									|| (rs_type == ATR_TYPE_SIZE)
+									|| (rs_type == ATR_TYPE_FLOAT)) { /* consumable resources */
+								pres->rs_defin->rs_set(&pres->rs_value, &tmp, INCR);
+								free_svrattrl(pres->rs_value.at_priv_encoded);
+								pres->rs_defin->rs_encode(&pres->rs_value, NULL, pres->rs_defin->rs_name,
+										NULL, ATR_ENCODE_CLIENT, &pres->rs_value.at_priv_encoded);
+							} else	{ /* non consumable resources */
+								if (pres->rs_defin->rs_comp(&pres->rs_value, &tmp))  {
+									log_err(-1, __func__, "conflicting values of non-consumable resource");
+									pres->rs_defin->rs_free(&tmp);
+									free(pres);
+									goto release_nodes_exit;
+								}
+							}
+							pres->rs_defin->rs_free(&tmp);
+						}
+#endif
 					}
 				}
 
@@ -3744,6 +3899,29 @@ pbs_release_nodes_given_select(relnodes_input_t *r_input, relnodes_input_select_
 					need.rl_naccels = atol(skv[j].kv_val);
 				else if (strcmp(skv[j].kv_keyw, "accelerator_memory") == 0)
 					need.rl_accel_mem = to_kbsize(skv[j].kv_val);
+#ifndef PBS_MOM
+				else {
+					resource_def *prdef;
+					pres = (resource *)calloc(1, sizeof(resource));
+					if (pres == NULL) {
+						log_err(-1, __func__, "unable to calloc resource");
+						goto release_nodes_exit;
+					}
+					prdef = find_resc_def(svr_resc_def, skv[j].kv_keyw,
+							svr_resc_size);
+					if (prdef == NULL) {
+						log_err(-1, __func__, "resource_def not found");
+						free(pres);
+						goto release_nodes_exit;
+					}
+					CLEAR_LINK(pres->rs_link);
+					pres->rs_defin = prdef;
+					append_link(&need.rl_oth_res, &pres->rs_link, NULL);
+					prdef->rs_decode(&pres->rs_value, NULL, NULL, skv[j].kv_val);
+					prdef->rs_encode(&pres->rs_value, NULL, prdef->rs_name,
+							NULL, ATR_ENCODE_CLIENT, &pres->rs_value.at_priv_encoded);
+				}
+#endif
 			}
 
 			/* go through the list of chunk resources */
@@ -3804,8 +3982,16 @@ pbs_release_nodes_given_select(relnodes_input_t *r_input, relnodes_input_select_
 					need.rl_vmem, need.rl_naccels,
 						need.rl_accel_mem);
         			log_event(PBSEVENT_DEBUG2, PBS_EVENTCLASS_JOB, LOG_ERR, r_input->jobid, log_buffer);
-
-				snprintf(log_buffer, sizeof(log_buffer), "NEED chunks for keep_select (%s)", (r_input2->select_str?r_input2->select_str:""));
+#ifndef PBS_MOM
+				for (pres = (resource *)GET_NEXT(need.rl_oth_res);
+						pres != NULL;
+						pres = (resource *)GET_NEXT(pres->rs_link)) {
+    				snprintf(log_buffer, sizeof(log_buffer),
+    					"(%s=%s)", pres->rs_defin->rs_name, pres->rs_value.at_priv_encoded->al_value);
+           			log_event(PBSEVENT_DEBUG2, PBS_EVENTCLASS_JOB, LOG_ERR, r_input->jobid, log_buffer);
+        		}
+#endif
+        		snprintf(log_buffer, sizeof(log_buffer), "NEED chunks for keep_select (%s)", (r_input2->select_str?r_input2->select_str:""));
         			log_event(PBSEVENT_DEBUG2, PBS_EVENTCLASS_JOB, LOG_ERR, r_input->jobid, log_buffer);
 				have_exec_vnode = return_available_vnodes(r_input->execvnode, vnl_good_master);
 				snprintf(log_buffer, sizeof(log_buffer), "HAVE chunks from job's exec_vnode: %s", have_exec_vnode ? have_exec_vnode : "none");
@@ -3827,7 +4013,15 @@ pbs_release_nodes_given_select(relnodes_input_t *r_input, relnodes_input_select_
 					need.rl_vmem, need.rl_naccels,
 						need.rl_accel_mem);
         			log_event(PBSEVENT_DEBUG2, PBS_EVENTCLASS_JOB, LOG_ERR, r_input->jobid, log_buffer);
-
+#ifndef PBS_MOM
+				for (pres = (resource *)GET_NEXT(need.rl_oth_res);
+						pres != NULL;
+						pres = (resource *)GET_NEXT(pres->rs_link)) {
+					snprintf(log_buffer, sizeof(log_buffer),
+						"(%s=%s)", pres->rs_defin->rs_name, pres->rs_value.at_priv_encoded->al_value);
+					log_event(PBSEVENT_DEBUG2, PBS_EVENTCLASS_JOB, LOG_ERR, r_input->jobid, log_buffer);
+				}
+#endif
 				snprintf(log_buffer, sizeof(log_buffer), "NEED chunks for keep_select (%s)", (r_input2->select_str?r_input2->select_str:""));
         			log_event(PBSEVENT_DEBUG2, PBS_EVENTCLASS_JOB, LOG_ERR, r_input->jobid, log_buffer);
 				have_exec_vnode = return_available_vnodes(r_input->execvnode, vnl_good_master);
@@ -3874,6 +4068,7 @@ release_nodes_exit:
 	resc_limit_list_free(&resc_limit_list);
 	resc_limit_free(have);
 	free(have);
+	resc_limit_free(&need);
 	resc_limit_free(have0);
 	free(have0);
 	free(selbuf);
