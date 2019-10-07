@@ -2884,8 +2884,36 @@ map_need_to_have_resources(char *buf, size_t buf_sz, char *have_resc,
 	} else if ( strcmp(have_resc, "accelerator_memory") == 0) {
 		sizemap_need_to_have_resources(buf, buf_sz,
 			have_resc, have_val, &need->rl_accel_mem);
+#ifndef PBS_MOM
+	} else {
+		resource *pneed;
+		for (pneed = (resource *)GET_NEXT(need->rl_oth_res);
+				pneed;
+				pneed = (resource *)GET_NEXT(pneed->rs_link)) {
+			if (strcasecmp(have_resc, pneed->rs_defin->rs_name) == 0) {
+				unsigned int rs_type = pneed->rs_defin->rs_type;
+				attribute hattr = {0};
+				pneed->rs_defin->rs_decode(&hattr, NULL, NULL, have_val);
+				if ((rs_type == ATR_TYPE_LONG)
+						|| (rs_type == ATR_TYPE_SIZE)
+						|| (rs_type == ATR_TYPE_FLOAT)) { /* consumable resources */
+					if ((pneed->rs_defin->rs_comp(&hattr, &pneed->rs_value) > 0)) {
+						snprintf(buf, buf_sz, ":%s=%s", have_resc, pneed->rs_value.at_priv_encoded->al_value);
+						pneed->rs_defin->rs_decode(&pneed->rs_value, NULL, NULL, "0");
+					} else {
+						pneed->rs_defin->rs_set(&pneed->rs_value, &hattr, DECR);
+						snprintf(buf, buf_sz, ":%s=%s", have_resc, have_val);
+					}
+					free_svrattrl(pneed->rs_value.at_priv_encoded);
+					pneed->rs_defin->rs_encode(&pneed->rs_value, NULL, pneed->rs_defin->rs_name,
+							NULL, ATR_ENCODE_CLIENT, &pneed->rs_value.at_priv_encoded);
+				} else	{ /* non consumable resources */
+					snprintf(buf, buf_sz, ":%s=%s", have_resc, pneed->rs_value.at_priv_encoded->al_value);
+				}
+			}
+		}
+#endif
 	}
-	// TODO: SHRINI map other resources
 }
 
 /**
@@ -2960,7 +2988,7 @@ add_to_vnl(vnl_t **vnlp, char *noden, char *keyw, char *keyval)
 #ifndef PBS_MOM
 /** 
  * @brief
- *	Check if remaining resources in 'have' satisfy the remaining
+ *	Check if other resources in 'have' satisfy the remaining
  *	 resources from 'need'.
  *
  * @param[in]	need - the need value of resc_limit_t type.
@@ -2971,7 +2999,7 @@ add_to_vnl(vnl_t **vnlp, char *noden, char *keyw, char *keyval)
  *	0 - otherwise
  */
 static int
-check_remaining_res(resc_limit_t *need, resc_limit_t *have)
+check_other_res(resc_limit_t *need, resc_limit_t *have)
 {
 	resource *pneed, *phave;
 	if (!GET_NEXT(need->rl_oth_res))
@@ -3062,7 +3090,7 @@ satisfy_chunk_need(resc_limit_t *need, resc_limit_t *have, vnl_t **vnlp)
 	    (need->rl_naccels > have->rl_naccels) ||
 	    (need->rl_accel_mem > have->rl_accel_mem)
 #ifndef PBS_MOM
-		|| check_remaining_res(need,have)
+		|| check_other_res(need,have)
 #endif
 		) {
 		return (NULL);
@@ -3082,7 +3110,6 @@ satisfy_chunk_need(resc_limit_t *need, resc_limit_t *have, vnl_t **vnlp)
 	map_need.rl_accel_mem = need->rl_accel_mem;
 
 #ifndef PBS_MOM
-
 	for (pneed = (resource *)GET_NEXT(need->rl_oth_res);
 			pneed;
 			pneed = (resource *)GET_NEXT(pneed->rs_link)) {
@@ -3095,6 +3122,8 @@ satisfy_chunk_need(resc_limit_t *need, resc_limit_t *have, vnl_t **vnlp)
 		pres->rs_defin = pneed->rs_defin;
 		append_link(&map_need.rl_oth_res, &pres->rs_link, NULL);
 		pres->rs_defin->rs_set(&pres->rs_value, &pneed->rs_value, SET);
+		pres->rs_defin->rs_encode(&pres->rs_value, NULL, pres->rs_defin->rs_name,
+				NULL, ATR_ENCODE_CLIENT, &pres->rs_value.at_priv_encoded);
 	}
 #endif
 	data_size = strlen(have->chunkstr) + 1;
@@ -3104,6 +3133,7 @@ satisfy_chunk_need(resc_limit_t *need, resc_limit_t *have, vnl_t **vnlp)
 		tpbuf = realloc(ret_chunkstr, data_size);
 		if (tpbuf == NULL) {
 			log_err(-1, __func__, "realloc failure");
+			resc_limit_free(&map_need);
 			return (NULL);
 		}
 		ret_chunkstr = tpbuf;
@@ -3114,6 +3144,7 @@ satisfy_chunk_need(resc_limit_t *need, resc_limit_t *have, vnl_t **vnlp)
 	chunkstr = strdup(have->chunkstr);
 	if (chunkstr == NULL) {
 		log_err(errno, __func__, "strdup 1 failure");
+		resc_limit_free(&map_need);
 		return (NULL);
 	}
 
@@ -3199,11 +3230,13 @@ satisfy_chunk_need(resc_limit_t *need, resc_limit_t *have, vnl_t **vnlp)
 		} else {
 			log_err(errno, __func__, "parse_node_resc_error");
 			free(chunkstr);
+			resc_limit_free(&map_need);
 			return (NULL);
 		}
 	}
 
 	free(chunkstr);
+	resc_limit_free(&map_need);
 	return (ret_chunkstr);
 }
 
@@ -3690,7 +3723,7 @@ pbs_release_nodes_given_select(relnodes_input_t *r_input, relnodes_input_select_
 						for (pres = (resource *)GET_NEXT(have->rl_oth_res);
 								pres != NULL;
 								pres = (resource *)GET_NEXT(pres->rs_link)) {
-							if (strcasecmp(pkvp[j].kv_keyw, pres->rs_defin->rs_name))
+							if (strcasecmp(pkvp[j].kv_keyw, pres->rs_defin->rs_name) == 0)
 								break;
 						}
 
