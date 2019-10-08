@@ -276,7 +276,7 @@ req_relnodesjob(struct batch_request *preq)
 	int		i, offset;
 	char		*nodeslist = NULL;
 	char		msg[LOG_BUF_SIZE];
-	char		*keep_select;
+	char		*keep_select = NULL;
 
  
 	if (preq == NULL)
@@ -343,7 +343,7 @@ req_relnodesjob(struct batch_request *preq)
 		nodeslist = NULL;
 	}
 
-	if(preq->rq_extend && *preq->rq_extend)
+	if (preq->rq_extend && *preq->rq_extend) {
 		keep_select = strchr(preq->rq_extend, '=');
 		if (!keep_select || !*(keep_select+1))
 			rc = PBSE_INVALSELECTRESC;
@@ -351,6 +351,7 @@ req_relnodesjob(struct batch_request *preq)
 			req_reject(rc, 0, preq);
 			return;
 		}
+	}
 
 	rc = free_sister_vnodes(pjob, nodeslist, keep_select, msg, LOG_BUF_SIZE, preq);
 

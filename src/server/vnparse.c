@@ -2644,7 +2644,6 @@ resc_limit_free(resc_limit_t *have)
 	pr = (resource *)GET_NEXT(have->rl_oth_res);
 	while (pr != NULL) {
 		next = (resource *)GET_NEXT(pr->rs_link);
-		free_svrattrl(pr->rs_value.at_priv_encoded);
 		delete_link(&pr->rs_link);
 		pr->rs_defin->rs_free(&pr->rs_value);
 		free(pr);
@@ -3120,7 +3119,7 @@ satisfy_chunk_need(resc_limit_t *need, resc_limit_t *have, vnl_t **vnlp)
 		}
 		CLEAR_LINK(pres->rs_link);
 		pres->rs_defin = pneed->rs_defin;
-		append_link(&map_need.rl_oth_res, &pres->rs_link, NULL);
+		append_link(&map_need.rl_oth_res, &pres->rs_link, pres);
 		pres->rs_defin->rs_set(&pres->rs_value, &pneed->rs_value, SET);
 		pres->rs_defin->rs_encode(&pres->rs_value, NULL, pres->rs_defin->rs_name,
 				NULL, ATR_ENCODE_CLIENT, &pres->rs_value.at_priv_encoded);
@@ -3743,7 +3742,7 @@ pbs_release_nodes_given_select(relnodes_input_t *r_input, relnodes_input_select_
 							}
 							CLEAR_LINK(pres->rs_link);
 							pres->rs_defin = prdef;
-							append_link(&have->rl_oth_res, &pres->rs_link, NULL);
+							append_link(&have->rl_oth_res, &pres->rs_link, pres);
 							prdef->rs_decode(&pres->rs_value, NULL, NULL, pkvp[j].kv_val);
 							prdef->rs_encode(&pres->rs_value, NULL, prdef->rs_name,
 									NULL, ATR_ENCODE_CLIENT, &pres->rs_value.at_priv_encoded);
@@ -3949,7 +3948,7 @@ pbs_release_nodes_given_select(relnodes_input_t *r_input, relnodes_input_select_
 					}
 					CLEAR_LINK(pres->rs_link);
 					pres->rs_defin = prdef;
-					append_link(&need.rl_oth_res, &pres->rs_link, NULL);
+					append_link(&need.rl_oth_res, &pres->rs_link, pres);
 					prdef->rs_decode(&pres->rs_value, NULL, NULL, skv[j].kv_val);
 					prdef->rs_encode(&pres->rs_value, NULL, prdef->rs_name,
 							NULL, ATR_ENCODE_CLIENT, &pres->rs_value.at_priv_encoded);
