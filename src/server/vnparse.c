@@ -1605,7 +1605,6 @@ void
 relnodes_input_vnodelist_init(relnodes_input_vnodelist_t *r_input)
 {
 	r_input->vnodelist = NULL;
-	r_input->schedselect = NULL;
 	r_input->deallocated_nodes_orig = NULL;
 	r_input->p_new_deallocated_execvnode = NULL;
 }
@@ -1685,7 +1684,7 @@ pbs_release_nodes_given_nodelist(relnodes_input_t *r_input, relnodes_input_vnode
 	momvmap_t 	*vn_vmap = NULL;
 #endif
 
-	if ((r_input == NULL) || (r_input->jobid == NULL) || (r_input->execvnode == NULL) || (r_input->exechost == NULL) || (r_input->exechost2 == NULL) || (r_input2->schedselect == NULL) || (err_msg == NULL) || (err_msg_sz <= 0)) {
+	if ((r_input == NULL) || (r_input->jobid == NULL) || (r_input->execvnode == NULL) || (r_input->exechost == NULL) || (r_input->exechost2 == NULL) || (r_input->schedselect == NULL) || (err_msg == NULL) || (err_msg_sz <= 0)) {
 
 		log_err(errno, __func__, "required parameter is null");
 		return (1);
@@ -1711,7 +1710,7 @@ pbs_release_nodes_given_nodelist(relnodes_input_t *r_input, relnodes_input_vnode
 		goto release_nodeslist_exit;
 	}
 
-	sched_select = expand_select_spec(r_input2->schedselect);
+	sched_select = expand_select_spec(r_input->schedselect);
 	if (sched_select == NULL) {
 		log_err(errno, __func__, "strdup error");
 		goto release_nodeslist_exit;
@@ -3256,6 +3255,7 @@ relnodes_input_init(relnodes_input_t *r_input)
 	r_input->execvnode = NULL;
 	r_input->exechost = NULL;
 	r_input->exechost2 = NULL;
+	r_input->schedselect = NULL;
 	r_input->p_new_exec_vnode = NULL;
 	r_input->p_new_exec_host[0] = NULL;
 	r_input->p_new_exec_host[1] = NULL;

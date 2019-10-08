@@ -6077,6 +6077,7 @@ recreate_exec_vnode(job *pjob, char *vnodelist, char *keep_select, char *err_msg
 	r_input.execvnode = exec_vnode;
 	r_input.exechost = exec_host;
 	r_input.exechost2 = exec_host2;
+	r_input.schedselect = schedselect;
 	r_input.p_new_exec_vnode = &new_exec_vnode;
 	r_input.p_new_exec_host[0] = &new_exec_host;
 	r_input.p_new_exec_host[1] = &new_exec_host2;
@@ -6085,7 +6086,6 @@ recreate_exec_vnode(job *pjob, char *vnodelist, char *keep_select, char *err_msg
 	if (keep_select == NULL) {
 		relnodes_input_vnodelist_init(&r_input_vnlist);
 		r_input_vnlist.vnodelist = vnodelist;
-		r_input_vnlist.schedselect = schedselect;
 		r_input_vnlist.deallocated_nodes_orig = deallocated_execvnode;
 		r_input_vnlist.p_new_deallocated_execvnode = &new_deallocated_execvnode;
 
