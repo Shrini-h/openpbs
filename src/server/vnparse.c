@@ -3020,9 +3020,6 @@ check_other_extra_res(resc_limit_t *need, resc_limit_t *have)
 	if (!GET_NEXT(need->rl_oth_res))
 		return 0;
 
-	if (!GET_NEXT(have->rl_oth_res))
-		return 1;
-
 	for (pneed = (resource *)GET_NEXT(need->rl_oth_res);
 			pneed;
 			pneed = (resource *)GET_NEXT(pneed->rs_link)) {
@@ -3901,7 +3898,7 @@ pbs_release_nodes_given_select(relnodes_input_t *r_input, relnodes_input_select_
 			chunk2 = parse_plus_spec_r(last2, &last2,
 							&hasprn2);
 #ifndef PBS_MOM
-			chunkschsel = parse_plus_spec_r(sched_select, &lastschsel,
+			chunkschsel = parse_plus_spec_r(lastschsel, &lastschsel,
 							&hasprnschsel);
 #endif
 			k++;
