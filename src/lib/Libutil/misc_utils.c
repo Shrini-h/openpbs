@@ -427,6 +427,63 @@ pbs_fgets_extend(char **pbuf, int *pbuf_size, FILE *fp)
 
 /**
  * @brief
+ * 	Internal helper function for pbs_asprintf() to determine the length of post-formatted string
+ * 
+ * @param[in] fmt - printf format string
+ * @param[in] args - va_list arguments from pbs_asprintf()
+ * 
+ * @return int
+ * @retval length of post-formatted string
+ */
+int
+pbs_asprintf_len(const char *fmt, va_list args) 
+{
+	int len;
+#ifdef WIN32
+	len = _vscprintf(fmt, args);
+#else
+	{
+		va_list dupargs;
+		char c;
+
+		va_copy(dupargs, args);
+		len = vsnprintf(&c, 0, fmt, dupargs);
+		va_end(dupargs);
+	}
+#endif
+	return len;
+}
+
+/**
+ * @brief
+ * 	Internal helper function for pbs_asprintf() to allocate memory and format the string
+ * 
+ * @param[in] len - length of post-formatted string
+ * @param[in] fmt - format for printed string
+ * @param[in] args - va_list arguments from pbs_asprintf()
+ * 
+ * @return char *
+ * @retval formatted string in allocated buffer
+ */
+
+char *
+pbs_asprintf_format(int len, const char *fmt, va_list args)
+{
+	char *buf;
+	int rc;
+	buf = malloc(len + 1);
+	if (!buf)
+		return NULL;
+	rc = vsnprintf(buf, len + 1, fmt, args);
+	if (rc != len) {
+		free(buf);
+		return NULL;
+	}
+	return buf;
+}
+
+/**
+ * @brief
  *	Internal asprintf() implementation for use on all platforms
  *
  * @param[in, out] dest - character pointer that will point to allocated
@@ -442,7 +499,7 @@ int
 pbs_asprintf(char **dest, const char *fmt, ...)
 {
 	va_list args;
-	int len, rc = -1;
+	int len;
 	char *buf = NULL;
 
 	if (!dest)
@@ -451,43 +508,25 @@ pbs_asprintf(char **dest, const char *fmt, ...)
 	if (!fmt)
 		return -1;
 	va_start(args, fmt);
-#ifdef WIN32
-	len = _vscprintf(fmt, args);
-#else
-	{
-		va_list dupargs;
-		char c;
-
-		va_copy(dupargs, args);
-		len = vsnprintf(&c, 0, fmt, dupargs);
-		va_end(dupargs);
-	}
-#endif
+	len = pbs_asprintf_len(fmt, args);
 	if (len < 0)
 		goto pbs_asprintf_exit;
-	buf = malloc(len + 1);
-	if (!buf)
+
+	buf = pbs_asprintf_format(len, fmt, args);
+	if (buf == NULL)
 		goto pbs_asprintf_exit;
-	rc = vsnprintf(buf, len + 1, fmt, args);
-	if (rc != len) {
-		rc = -1;
-		goto pbs_asprintf_exit;
-	}
 	*dest = buf;
 pbs_asprintf_exit:
 	va_end(args);
-	if (rc < 0) {
-		char *tmp;
-
-		tmp = realloc(buf, 1);
-		if (tmp)
-			buf = tmp;
+	if (buf == NULL) {
+		buf = malloc(1);
 		if (buf) {
 			*buf = '\0';
 			*dest = buf;
+			return -1;
 		}
 	}
-	return rc;
+	return len;
 }
 
 /**
@@ -1781,4 +1820,57 @@ perf_stat_stop(char *instance)
 	free(p_stat);
 
 	return (stat_summary);
+}
+
+/**
+ * @brief
+ *	creates an empty file in /tmp/ and saves timestamp of that file
+ *
+ * @param[in] - void
+ *
+ * @return - void
+ */
+void
+create_query_file(void)
+{
+	FILE *f;
+	char filename[MAXPATHLEN + 1];
+	snprintf(filename, sizeof(filename), "%s/.pbs_last_query_%d", TMP_DIR, getuid());
+	f = fopen(filename, "w");
+	fclose(f);
+}
+
+/**
+ * @brief
+ *	stats te information of the empty file created in /tmp/ to decide 
+ *  whether to add sleep for .2 seconds or not
+ * 
+ * @param[in] - void
+ *
+ * @return - void
+ */
+void
+delay_query(void)
+{
+	char filename[MAXPATHLEN + 1];	
+#ifdef WIN32
+	struct _stat buf;
+#else
+	struct stat buf;
+#endif
+	snprintf(filename, sizeof(filename), "%s/.pbs_last_query_%d", TMP_DIR, getuid());
+#ifdef WIN32
+	if(_stat(filename, &buf) == 0) {
+		if(((time(NULL)*1000) - (buf.st_mtime * 1000)) < 10) {
+			Sleep(200);
+		}
+	}
+#else
+	if(stat(filename, &buf) == 0) {
+		if(((time(NULL)*1000) - (buf.st_mtime * 1000)) < 10) {
+			usleep(200000);
+		}
+	}
+#endif
+	atexit(create_query_file);
 }
