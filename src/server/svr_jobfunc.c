@@ -6097,6 +6097,7 @@ recreate_exec_vnode(job *pjob, char *vnodelist, char *keep_select, char *err_msg
 		int select_str_sz = 0;
 		relnodes_input_select_init(&r_input_keep_select);
 		r_input_keep_select.select_str = get_ms_select_chunk(schedselect);  /* has to be freed later */
+		select_str_sz = strlen(r_input_keep_select.select_str) + 1;
 		pbs_strcat(&r_input_keep_select.select_str, &select_str_sz, "+");
 		pbs_strcat(&r_input_keep_select.select_str, &select_str_sz, keep_select);
 		populate_mom_list(&succeeded_mom_list, exec_host2);
