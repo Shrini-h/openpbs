@@ -3247,9 +3247,19 @@ check_other_res(resc_limit_t *need, resc_limit_t *have)
 				phave;
 				phave = (resource *)GET_NEXT(phave->rs_link)) {
 			if (pneed->rs_defin == phave->rs_defin) {
-				if (pneed->rs_defin->rs_comp(&pneed->rs_value, &phave->rs_value) <= 0) {
-					matched = 1;
-					break;
+				resource_def *prdef = pneed->rs_defin;
+				unsigned int atr_type = prdef->rs_type;
+				if ((atr_type == ATR_TYPE_STR)
+						|| (atr_type == ATR_TYPE_BOOL)) {
+					if (!prdef->rs_comp(&pneed->rs_value, &phave->rs_value)) {
+						matched = 1;
+						break;
+					}
+				} else { /* for atr type long, float and size */
+					if (prdef->rs_comp(&pneed->rs_value, &phave->rs_value) <= 0) {
+						matched = 1;
+						break;
+					}
 				}
 			}
 		}
@@ -3303,6 +3313,9 @@ satisfy_chunk_need(resc_limit_t *need, resc_limit_t *have, vnl_t **vnlp)
 	if ((need == NULL) || (have == NULL))
 		return (NULL);
 
+	if ((have->chunkstr == NULL) || (have->chunkstr[0] == '\0'))
+		return (NULL);
+
 	if ((need->rl_ncpus > have->rl_ncpus) ||
 	    (need->rl_mem > have->rl_mem) ||
 	    (need->rl_ssi > have->rl_ssi) ||
@@ -3315,9 +3328,6 @@ satisfy_chunk_need(resc_limit_t *need, resc_limit_t *have, vnl_t **vnlp)
 		) {
 		return (NULL);
 	}
-
-	if ((have->chunkstr == NULL) || (have->chunkstr[0] == '\0'))
-		return (NULL);
 
 	memset(&map_need, 0, sizeof(resc_limit_t));
 	resc_limit_init(&map_need);
