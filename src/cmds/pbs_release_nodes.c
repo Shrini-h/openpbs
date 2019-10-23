@@ -98,7 +98,7 @@ main(int argc, char **argv, char **envp) /* pbs_release_nodes */
 					int i;
 					char *erp;
 					keep_opt = optarg;
-					if ((i=set_resources(&keep_attrl, keep_opt, TRUE, &erp))) {
+					if ((i = set_resources(&keep_attrl, keep_opt, TRUE, &erp))) {
 						if (i > 1) {
 							pbs_prt_parse_err("pbs_release_nodes: illegal -k value\n", keep_opt,
 								(int)(erp - optarg), i);
@@ -106,7 +106,7 @@ main(int argc, char **argv, char **envp) /* pbs_release_nodes */
 							fprintf(stderr, "pbs_release_nodes: illegal -k value\n");
 						exit(2);
 					} else {
-						if(!keep_attrl || strcmp(keep_attrl->resource, "select")) {
+						if (!keep_attrl || strcmp(keep_attrl->resource, "select")) {
 							fprintf(stderr, "pbs_release_nodes: only a \"select=\" string is valid in -k option\n");
 							errflg++;
 							break;

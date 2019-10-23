@@ -5920,7 +5920,7 @@ static void
 populate_mom_list(pbs_list_head *to_head, char *exechostx)
 {
 	char *hostn = NULL, *last = NULL, *peh;
-	int	hasprn = 0;
+	int  hasprn = 0;
 
 	if ((to_head == NULL) || (exechostx == NULL) || !*exechostx)
 		return;
@@ -5962,7 +5962,7 @@ static char *
 get_ms_select_chunk(char *select_str)
 {
 	char *slast, *selbuf, *psubspec, *retval = NULL;
-	int hpn;
+	int   hpn;
 
     if (select_str == NULL) {
             log_err(-1, __func__, "bad param passed");
@@ -6160,7 +6160,7 @@ recreate_exec_vnode(job *pjob, char *vnodelist, char *keep_select, char *err_msg
 		goto recreate_exec_vnode_exit;
 	}
 
-	if ((keep_select == NULL) && new_deallocated_execvnode && new_deallocated_execvnode[0] != '\0') {
+	if ((keep_select == NULL) && new_deallocated_execvnode && (new_deallocated_execvnode[0] != '\0')) {
 		(void)job_attr_def[(int)JOB_ATR_exec_vnode_deallocated].at_decode(
 			&pjob->ji_wattr[(int)JOB_ATR_exec_vnode_deallocated],
 			NULL,

@@ -2882,7 +2882,6 @@ resc_limit_free_res_list(pbs_list_head *pl_head)
 void
 resc_limit_free(resc_limit_t *have)
 {
-
 	if (have == NULL)
 		return;
 
@@ -3880,7 +3879,7 @@ pbs_release_nodes_given_select(relnodes_input_t *r_input, relnodes_input_select_
 
 				if (chunk2 && *chunk2) {
 					char *tmp;
-					int	i;
+					int  i;
 					snprintf(e2buf, sizeof(e2buf), "%s", chunk2);
 					tmp = strtok(e2buf, ":/");
 

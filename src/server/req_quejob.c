@@ -357,7 +357,7 @@ req_quejob(struct batch_request *preq)
 			((psatl->al_value != NULL) &&
 			(psatl->al_value[0] != '\0'))) {
 
-			if ((rc=validate_perm_res_in_select(psatl->al_value, 0)) != 0) {
+			if ((rc = validate_perm_res_in_select(psatl->al_value, 0)) != 0) {
 				req_reject(rc, 0, preq);
 				return;
 			}
