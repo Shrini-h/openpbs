@@ -3128,19 +3128,30 @@ map_need_to_have_resources(char *buf, size_t buf_sz, char *have_resc,
 				pneed = (resource *)GET_NEXT(pneed->rs_link)) {
 			if (strcasecmp(have_resc, pneed->rs_defin->rs_name) == 0) {
 				attribute hattr = {0};
+				int cmp_res;
 				if (!(pneed->rs_value.at_flags & IN_EXECVNODE_FLAG))
 					return;
 				pneed->rs_defin->rs_decode(&hattr, NULL, NULL, have_val);
-				if ((pneed->rs_defin->rs_comp(&hattr, &pneed->rs_value) > 0)) {
-					snprintf(buf, buf_sz, ":%s=%s", have_resc, pneed->rs_value.at_priv_encoded->al_value);
-					pneed->rs_defin->rs_decode(&pneed->rs_value, NULL, NULL, "0");
-				} else {
-					pneed->rs_defin->rs_set(&pneed->rs_value, &hattr, DECR);
+				cmp_res = pneed->rs_defin->rs_comp(&hattr, &pneed->rs_value);
+				if (!cmp_res) {
+					resource *tmp =  pneed;
+					pneed = (resource *)pneed->rs_link.ll_prior;
 					snprintf(buf, buf_sz, ":%s=%s", have_resc, have_val);
+					delete_link(&tmp->rs_link);
+					tmp->rs_defin->rs_free(&tmp->rs_value);
+					free(tmp);
+				} else {
+					if (cmp_res > 0) {
+						snprintf(buf, buf_sz, ":%s=%s", have_resc, pneed->rs_value.at_priv_encoded->al_value);
+						pneed->rs_defin->rs_decode(&pneed->rs_value, NULL, NULL, "0");
+					} else {
+						pneed->rs_defin->rs_set(&pneed->rs_value, &hattr, DECR);
+						snprintf(buf, buf_sz, ":%s=%s", have_resc, have_val);
+					}
+					free_svrcache(&pneed->rs_value);
+					pneed->rs_defin->rs_encode(&pneed->rs_value, NULL, pneed->rs_defin->rs_name,
+							NULL, ATR_ENCODE_CLIENT, &pneed->rs_value.at_priv_encoded);
 				}
-				free_svrcache(&pneed->rs_value);
-				pneed->rs_defin->rs_encode(&pneed->rs_value, NULL, pneed->rs_defin->rs_name,
-						NULL, ATR_ENCODE_CLIENT, &pneed->rs_value.at_priv_encoded);
 			}
 		}
 #endif
