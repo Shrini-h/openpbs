@@ -2758,7 +2758,7 @@ add_to_resc_limit_list_as_head(pbs_list_head *phead, resc_limit_t *resc)
  *
  * @return int
  * @retval 0	- successful operation.
- * @retval 1	- unsuccessful operation.
+ * @retval PBSE_Error	- Error Code.
  */
 int
 resc_limit_insert_other_res(resc_limit_t *have, char *kv_keyw, char *kv_val, int execv_f)
@@ -2766,12 +2766,13 @@ resc_limit_insert_other_res(resc_limit_t *have, char *kv_keyw, char *kv_val, int
 	resource *pres,*pnewres;
 	resource_def	*resc_def = NULL;
 	int cmp_res = -1;
+	int rc;
 
 	resc_def = find_resc_def(svr_resc_def, kv_keyw, svr_resc_size);
 
 	if (resc_def == NULL) {
 		log_err(-1, __func__, "resc_def is NULL");
-		return 1;
+		return PBSE_UNKRESC;
 	}
 
 	for (pres = (resource *)GET_NEXT(have->rl_oth_res);
@@ -2783,7 +2784,11 @@ resc_limit_insert_other_res(resc_limit_t *have, char *kv_keyw, char *kv_val, int
 
 	if (!cmp_res) {
 		attribute tmp = {0};
-		pres->rs_defin->rs_decode(&tmp, NULL, NULL, kv_val);
+		if ((rc = pres->rs_defin->rs_decode(&tmp, NULL, NULL, kv_val))) {
+			snprintf(log_buffer, sizeof(log_buffer), "failed to decode res %s=%s, (rc=%d)", kv_keyw, kv_val, rc);
+			log_err(-1, __func__, log_buffer);
+			return rc;
+		}
 		pres->rs_defin->rs_set(&pres->rs_value, &tmp, INCR);
 		free_svrcache(&pres->rs_value);
 		pres->rs_defin->rs_encode(&pres->rs_value, NULL, pres->rs_defin->rs_name,
@@ -2797,7 +2802,12 @@ resc_limit_insert_other_res(resc_limit_t *have, char *kv_keyw, char *kv_val, int
 		}
 		CLEAR_LINK(pnewres->rs_link);
 		pnewres->rs_defin = resc_def;
-		resc_def->rs_decode(&pnewres->rs_value, NULL, NULL, kv_val);
+		if ((rc = resc_def->rs_decode(&pnewres->rs_value, NULL, NULL, kv_val))) {
+			snprintf(log_buffer, sizeof(log_buffer), "failed to decode res %s=%s, (rc=%d)", kv_keyw, kv_val, rc);
+			log_err(-1, __func__, log_buffer);
+			free(pnewres);
+			return rc;
+		}
 		resc_def->rs_encode(&pnewres->rs_value, NULL, resc_def->rs_name,
 				NULL, ATR_ENCODE_CLIENT, &pnewres->rs_value.at_priv_encoded);
 		if (execv_f)
@@ -4028,7 +4038,7 @@ pbs_release_nodes_given_select(relnodes_input_t *r_input, relnodes_input_select_
 						have->rl_accel_mem += to_kbsize(pkvp[j].kv_val);
 #ifndef PBS_MOM
 					} else {
-						if (resc_limit_insert_other_res(have, pkvp[j].kv_keyw, pkvp[j].kv_val, TRUE)) {
+						if ((rc = resc_limit_insert_other_res(have, pkvp[j].kv_keyw, pkvp[j].kv_val, TRUE))) {
 							sprintf(log_buffer, "failed to insert resource %s", pkvp[j].kv_keyw);
 							log_err(-1, __func__, log_buffer);
 							goto release_nodes_exit;
@@ -4054,7 +4064,7 @@ pbs_release_nodes_given_select(relnodes_input_t *r_input, relnodes_input_select_
 						for (x = parse_resc_equal_string(extra_res, &word, &value, &last);
 								x == 1;
 								x = parse_resc_equal_string(last, &word, &value, &last)) {
-							if (resc_limit_insert_other_res(have, word, value, FALSE)) {
+							if ((rc = resc_limit_insert_other_res(have, word, value, FALSE))) {
 								sprintf(log_buffer, "failed to insert resource %s", word);
 								log_err(-1, __func__, log_buffer);
 								goto release_nodes_exit;
@@ -4233,7 +4243,7 @@ pbs_release_nodes_given_select(relnodes_input_t *r_input, relnodes_input_select_
 					need.rl_accel_mem = to_kbsize(skv[j].kv_val);
 #ifndef PBS_MOM
 				else {
-					if (resc_limit_insert_other_res(&need, skv[j].kv_keyw, skv[j].kv_val, FALSE)) {
+					if ((rc = resc_limit_insert_other_res(&need, skv[j].kv_keyw, skv[j].kv_val, FALSE))) {
 						sprintf(log_buffer, "failed to insert resource %s", skv[j].kv_keyw);
 						log_err(-1, __func__, log_buffer);
 						goto release_nodes_exit;
