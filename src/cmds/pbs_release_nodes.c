@@ -67,7 +67,6 @@ main(int argc, char **argv, char **envp) /* pbs_release_nodes */
 	char server_out[MAXSERVERNAME];
 	char rmt_server[MAXSERVERNAME];
 	char *keep_opt = NULL;
-	struct attrl *keep_attrl = NULL;
 	int  len;
 	char *node_list = NULL;
 	int connect;
@@ -94,25 +93,7 @@ main(int argc, char **argv, char **envp) /* pbs_release_nodes */
 				job_id[PBS_MAXCLTJOBID-1] = '\0';
 				break;
 			case 'k':
-				{
-					int i;
-					char *erp;
-					keep_opt = optarg;
-					if ((i = set_resources(&keep_attrl, keep_opt, TRUE, &erp))) {
-						if (i > 1) {
-							pbs_prt_parse_err("pbs_release_nodes: illegal -k value\n", keep_opt,
-								(int)(erp - optarg), i);
-						} else
-							fprintf(stderr, "pbs_release_nodes: illegal -k value\n");
-						exit(2);
-					} else {
-						if (!keep_attrl || strcmp(keep_attrl->resource, "select")) {
-							fprintf(stderr, "pbs_release_nodes: only a \"select=\" string is valid in -k option\n");
-							errflg++;
-							break;
-						}
-					}
-				}
+				keep_opt = optarg;
 				break;
 			case 'a':
 				all_opt = 1;
