@@ -2847,6 +2847,7 @@ resc_limit_init(resc_limit_t *have)
 	have->rl_res_count = 0U;
 	have->chunkstr = NULL;
 	have->chunkstr_sz = 0;
+	have->chunkspec = NULL;
 	have->host_chunk[0].str = NULL;
 	have->host_chunk[0].num = 0;
 	have->host_chunk[1].str = NULL;
@@ -2900,6 +2901,8 @@ resc_limit_free(resc_limit_t *have)
 	free(have->chunkstr);
 	have->chunkstr = NULL;
 	have->chunkstr_sz = 0;
+	free(have->chunkspec);
+	have->chunkspec = NULL;
 	free(have->host_chunk[0].str);
 	have->host_chunk[0].str = NULL;
 	have->host_chunk[0].num = 0;
@@ -3288,6 +3291,35 @@ check_other_res(resc_limit_t *need, resc_limit_t *have)
 	}
 
 	return 0;
+}
+
+/**
+ * @brief
+ *	appends a chunk spec to sched select and also tries to
+ *	group identical chunk specs by increasing the chunk count
+ *
+ * @param[in/out]	new_schedselect - pointer to new sched select
+ * @param[in]		chunkstr - current chunk spec to append
+ * @param[in/out]	tmp_chunk_spec - buffer to accumulate identical chunk specs
+ * @param[in/out]	tmp_chunk_ct - count of gathered identical chunk specs
+ *
+ * @return none
+ */
+static void
+coagulate_append_sched_sel(char *new_schedselect, char *chunkstr, char *tmp_chunk_spec, int *tmp_chunk_ct)
+{
+	if (*tmp_chunk_spec) {
+		if (!strcasecmp(tmp_chunk_spec, chunkstr)) {
+			(*tmp_chunk_ct)++;
+			return;
+		}
+		if (*new_schedselect)
+			strcat(new_schedselect, "+");
+		sprintf(new_schedselect + strlen(new_schedselect), "%d:%s", *tmp_chunk_ct, tmp_chunk_spec);
+	}
+
+	(*tmp_chunk_ct) = 1;
+	strcpy(tmp_chunk_spec, chunkstr);
 }
 #endif
 
@@ -3763,6 +3795,8 @@ pbs_release_nodes_given_select(relnodes_input_t *r_input, relnodes_input_select_
 	char		*res_in_exec_vnode = NULL;
 	char		*lastschsel = NULL;
 	int		hasprnschsel = 0;
+	char		*tmp_chunk_spec = NULL;
+	int		tmp_chunk_ct;
 #endif
 
 	if ((r_input == NULL) || (r_input2 == NULL) || (r_input->jobid == NULL) || (r_input->execvnode == NULL) || (r_input->exechost == NULL) || (r_input->exechost2 == NULL) || (r_input->schedselect == NULL) || (err_msg == NULL) || (err_msg_sz <= 0)) {
@@ -3794,6 +3828,17 @@ pbs_release_nodes_given_select(relnodes_input_t *r_input, relnodes_input_select_
 		log_err(errno, __func__, "strdup error");
 		goto release_nodes_exit;
 	}
+	if(!(new_schedselect = malloc(strlen(sched_select)))) {
+		log_err(errno, __func__, "new_schedselect malloc failed");
+		goto release_nodes_exit;
+	}
+	*new_schedselect = '\0';
+
+	if(!(tmp_chunk_spec = malloc(strlen(r_input->schedselect)))) {
+		log_err(errno, __func__, "tmp_chunk_spec malloc failed");
+		goto release_nodes_exit;
+	}
+	*tmp_chunk_spec = '\0';
 	res_in_exec_vnode = resources_seen(exec_vnode);
 #endif
 
@@ -4056,6 +4101,10 @@ pbs_release_nodes_given_select(relnodes_input_t *r_input, relnodes_input_select_
 					}
 
 #ifndef PBS_MOM
+					if (!(have->chunkspec = strdup(chunkschsel + 2))) { /* +2 is to skip past '1:' */
+						log_err(errno, __func__, "strdup error");
+						goto release_nodes_exit;
+					}
 					extra_res = return_missing_resources(chunkschsel,
 								res_in_exec_vnode);
 					if ((extra_res) && (*extra_res)) {
@@ -4262,6 +4311,9 @@ pbs_release_nodes_given_select(relnodes_input_t *r_input, relnodes_input_select_
 				have2 = p_entry->resc;
 				new_chunkstr = satisfy_chunk_need(&need, have2, &vnl_good);
 				if (new_chunkstr != NULL) {
+#ifndef PBS_MOM
+					coagulate_append_sched_sel(new_schedselect, have2->chunkspec, tmp_chunk_spec, &tmp_chunk_ct);
+#endif
 					if (l > 0) {
 						strcat(new_exec_vnode, "+");
 						if (have2->host_chunk[0].str) {
@@ -4376,7 +4428,14 @@ pbs_release_nodes_given_select(relnodes_input_t *r_input, relnodes_input_select_
 		goto release_nodes_exit;
 	}
 
-	if (do_schedselect(r_input2->select_str, NULL, NULL, NULL, &tmpstr) != 0) {
+#ifndef PBS_MOM
+	coagulate_append_sched_sel(new_schedselect, "", tmp_chunk_spec, &tmp_chunk_ct);
+	rc = do_schedselect(new_schedselect, NULL, NULL, NULL, &tmpstr);
+	free(new_schedselect);
+#else
+	rc = do_schedselect(r_input2->select_str, NULL, NULL, NULL, &tmpstr);
+#endif
+	if (rc != 0) {
 		rc = 1;
 		goto release_nodes_exit;
 	}
