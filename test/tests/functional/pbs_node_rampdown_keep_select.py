@@ -487,3 +487,78 @@ class TestPbsNodeRampDownKeepSelect(TestFunctional):
         'select=2:model=def'
         """
         self.test_with_a_custom_str_res(partial_res_list=True)
+
+    def test_with_a_custom_bool_res(self, partial_res_list=False):
+        """
+        submit job with select string containing a custom string resource
+        'select=ncpus=1+ncpus=2:bigmem=true+ncpus=2+
+        ncpus=3:bigmem=true+ncpus=3'
+        release nodes except the MS and nodes matching below sub select string
+        'select=ncpus=2:bigmem=true+ncpus=3:bigmem=true'
+        """
+        # 1. create a custom string resources
+        bool_res = 'bigmem'
+        self.create_res([new_res(bool_res, self.res_b_h)])
+
+        n1 = n_conf({'resources_available.ncpus': '1'})
+        n2_a = n_conf({'resources_available.ncpus': '2'})
+        n2_b = n_conf({'resources_available.ncpus': '2',
+                       'resources_available.'+bool_res: 'true'})
+        n3_b = n_conf({'resources_available.ncpus': '3',
+                       'resources_available.'+bool_res: 'true'})
+        n3_c = n_conf({'resources_available.ncpus': '3'})
+
+        nc_list = [n1, n2_a, n2_b, n3_b, n3_c]
+        # 2. configure the cluster
+        self.config_nodes(nc_list)
+
+        if partial_res_list is False:
+            keep_sel = ('select=ncpus=2:'+bool_res+'=true+ncpus=3:' +
+                        bool_res+'=true')
+        else:
+            keep_sel = 'select=2:'+bool_res+'=true'
+
+        args = {
+            'qsub_sel': 'ncpus=1+ncpus=2:'+bool_res+'=true+ncpus=2+ncpus=3:' +
+            bool_res+'=true+ncpus=3',
+            'keep_sel': keep_sel,
+            'sched_sel': '1:ncpus=1+1:ncpus=2:'+bool_res +
+            '=True+1:ncpus=2+1:ncpus=3:'+bool_res+'=True+1:ncpus=3',
+            'expected_res': self.flatten_node_res(nc_list),
+            'rel_user': TEST_USER,
+            'qsub_sel_after': '1:ncpus=1+1:ncpus=2:'+bool_res +
+            '=True+1:ncpus=3:'+bool_res+'=True',
+            'sched_sel_after': '1:ncpus=1+1:ncpus=2:'+bool_res +
+            '=True+1:ncpus=3:'+bool_res+'=True',
+            'expected_res_after': self.flatten_node_res([n1, n2_b, n3_b])
+            }
+
+        job_stat = {'job_state': 'R',
+                    'Resource_List.ncpus': 11,
+                    'Resource_List.nodect': 5,
+                    'Resource_List.select': args['qsub_sel'],
+                    'schedselect': args['sched_sel']}
+
+        args['job_stat'] = job_stat
+
+        job_stat_after = {'job_state': 'R',
+                          'Resource_List.ncpus': 6,
+                          'Resource_List.nodect': 3,
+                          'Resource_List.select': args['qsub_sel_after'],
+                          'schedselect': args['sched_sel_after']}
+
+        args['job_stat_after'] = job_stat_after
+        tc = test_config(**args)
+        self.common_tc_flow(tc)
+
+    def test_with_a_custom_bool_res_partial_list(self,
+                                                 partial_res_list=False):
+        """
+        submit job with select string containing a custom string resource
+        'select=ncpus=1+ncpus=2:bigmem=true+ncpus=2+
+        ncpus=3:bigmem=true+ncpus=3'
+        release nodes except the MS and nodes matching below sub select string
+        containing partial resource list
+        'select=2:bigmem=true'
+        """
+        self.test_with_a_custom_bool_res(partial_res_list=True)
