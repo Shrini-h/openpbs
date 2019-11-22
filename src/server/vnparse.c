@@ -2639,9 +2639,9 @@ add_to_resc_limit_list_sorted(pbs_list_head *phead, resc_limit_t *resc)
 		return (1);
 
 	for (plink_cur = phead,
-			p_entry_cur = (rl_entry *)GET_NEXT(*phead);
-			p_entry_cur;
-			p_entry_cur = (rl_entry *)GET_NEXT(*plink_cur)) {
+		p_entry_cur = (rl_entry *)GET_NEXT(*phead);
+		p_entry_cur;
+		p_entry_cur = (rl_entry *)GET_NEXT(*plink_cur)) {
 		plink_cur = &p_entry_cur->rl_link;
 		p_res_cur = p_entry_cur->resc;
 
@@ -2763,8 +2763,8 @@ add_to_resc_limit_list_as_head(pbs_list_head *phead, resc_limit_t *resc)
 int
 resc_limit_insert_other_res(resc_limit_t *have, char *kv_keyw, char *kv_val, int execv_f)
 {
-	resource *pres,*pnewres;
-	resource_def	*resc_def = NULL;
+	resource *pres, *pnewres;
+	resource_def *resc_def = NULL;
 	int cmp_res = -1;
 	int rc;
 
@@ -2776,8 +2776,8 @@ resc_limit_insert_other_res(resc_limit_t *have, char *kv_keyw, char *kv_val, int
 	}
 
 	for (pres = (resource *)GET_NEXT(have->rl_oth_res);
-			pres != NULL;
-			pres = (resource *)GET_NEXT(pres->rs_link)) {
+		pres != NULL;
+		pres = (resource *)GET_NEXT(pres->rs_link)) {
 		if ((cmp_res = strcasecmp(pres->rs_defin->rs_name, kv_keyw)) >= 0)
 			break;
 	}
@@ -2950,7 +2950,7 @@ resc_limit_list_print(char *header_str, pbs_list_head *res_list, int logtype)
 {
 	rl_entry		*p_entry = NULL;
 	int			i;
-	resource *phave;
+	resource		*phave;
 
 	if ((header_str == NULL) || (res_list == NULL))
 		return;
@@ -2977,8 +2977,8 @@ resc_limit_list_print(char *header_str, pbs_list_head *res_list, int logtype)
 		log_event(logtype, PBS_EVENTCLASS_RESC,
 			LOG_INFO, __func__, log_buffer);
 		for (phave = (resource *)GET_NEXT(have->rl_oth_res);
-				phave;
-				phave = (resource *)GET_NEXT(phave->rs_link)) {
+			phave;
+			phave = (resource *)GET_NEXT(phave->rs_link)) {
 			snprintf(log_buffer, sizeof(log_buffer), "%s[%d]: other res %s=%s",
 					header_str, i, phave->rs_defin->rs_name, phave->rs_value.at_priv_encoded->al_value);
 			log_event(logtype, PBS_EVENTCLASS_RESC,
@@ -3137,8 +3137,8 @@ map_need_to_have_resources(char *buf, size_t buf_sz, char *have_resc,
 	} else {
 		resource *pneed;
 		for (pneed = (resource *)GET_NEXT(need->rl_oth_res);
-				pneed;
-				pneed = (resource *)GET_NEXT(pneed->rs_link)) {
+			pneed;
+			pneed = (resource *)GET_NEXT(pneed->rs_link)) {
 			if (strcasecmp(have_resc, pneed->rs_defin->rs_name) == 0) {
 				attribute hattr = {0};
 				int cmp_res;
@@ -3263,17 +3263,17 @@ check_other_res(resc_limit_t *need, resc_limit_t *have)
 		return 0;
 
 	for (pneed = (resource *)GET_NEXT(need->rl_oth_res);
-			pneed;
-			pneed = (resource *)GET_NEXT(pneed->rs_link)) {
+		pneed;
+		pneed = (resource *)GET_NEXT(pneed->rs_link)) {
 		int matched = 0;
 		for (phave = (resource *)GET_NEXT(have->rl_oth_res);
-				phave;
-				phave = (resource *)GET_NEXT(phave->rs_link)) {
+			phave;
+			phave = (resource *)GET_NEXT(phave->rs_link)) {
 			if (pneed->rs_defin == phave->rs_defin) {
 				resource_def *prdef = pneed->rs_defin;
 				unsigned int atr_type = prdef->rs_type;
 				if ((atr_type == ATR_TYPE_STR)
-						|| (atr_type == ATR_TYPE_BOOL)) {
+					|| (atr_type == ATR_TYPE_BOOL)) {
 					if (!prdef->rs_comp(&pneed->rs_value, &phave->rs_value)) {
 						matched = 1;
 						break;
@@ -3359,7 +3359,7 @@ satisfy_chunk_need(resc_limit_t *need, resc_limit_t *have, vnl_t **vnlp)
 	int		j;
 	int		entry = 0;
 #ifndef PBS_MOM
-	resource *presnew, *pres, *pneed;
+	resource	*presnew, *pres, *pneed;
 #endif
 
 	if ((need == NULL) || (have == NULL))
@@ -3400,8 +3400,8 @@ satisfy_chunk_need(resc_limit_t *need, resc_limit_t *have, vnl_t **vnlp)
 	map_need.rl_accel_mem = have->rl_accel_mem;
 
 	for (pres = (resource *)GET_NEXT(have->rl_oth_res);
-			pres;
-			pres = (resource *)GET_NEXT(pres->rs_link)) {
+		pres;
+		pres = (resource *)GET_NEXT(pres->rs_link)) {
 		presnew = (resource *)calloc(1, sizeof(resource));
 		if (presnew == NULL) {
 			log_err(-1, __func__, "unable to calloc resource");
@@ -3440,9 +3440,9 @@ satisfy_chunk_need(resc_limit_t *need, resc_limit_t *have, vnl_t **vnlp)
 			break;
 
 		if (((res_type == ATR_TYPE_LONG)
-				|| (res_type == ATR_TYPE_SIZE)
-				|| (res_type == ATR_TYPE_FLOAT))
-				&& (pres->rs_defin->rs_comp(&pres->rs_value, &pneed->rs_value))) {
+			|| (res_type == ATR_TYPE_SIZE)
+			|| (res_type == ATR_TYPE_FLOAT))
+			&& (pres->rs_defin->rs_comp(&pres->rs_value, &pneed->rs_value))) {
 			pres->rs_defin->rs_free(&pres->rs_value); /* IN_EXECVNODE_FLAG gets preserved */
 			pres->rs_defin->rs_set(&pres->rs_value, &pneed->rs_value, SET);
 			pres->rs_defin->rs_encode(&pres->rs_value, NULL, pres->rs_defin->rs_name,
@@ -3789,7 +3789,7 @@ pbs_release_nodes_given_select(relnodes_input_t *r_input, relnodes_input_select_
 	struct pbsnode	*pnode = NULL;
 	char		e2buf[PBS_MAXHOSTNAME+1+6+16];
 	char		*extra_res = NULL;
-	resource *pres;
+	resource	*pres;
 	char		*sched_select = NULL;
 	char		*chunkschsel = NULL;
 	char		*res_in_exec_vnode = NULL;
@@ -3828,13 +3828,13 @@ pbs_release_nodes_given_select(relnodes_input_t *r_input, relnodes_input_select_
 		log_err(errno, __func__, "strdup error");
 		goto release_nodes_exit;
 	}
-	if(!(new_schedselect = malloc(strlen(sched_select)))) {
+	if (!(new_schedselect = malloc(strlen(sched_select)))) {
 		log_err(errno, __func__, "new_schedselect malloc failed");
 		goto release_nodes_exit;
 	}
 	*new_schedselect = '\0';
 
-	if(!(tmp_chunk_spec = malloc(strlen(r_input->schedselect)))) {
+	if (!(tmp_chunk_spec = malloc(strlen(r_input->schedselect)))) {
 		log_err(errno, __func__, "tmp_chunk_spec malloc failed");
 		goto release_nodes_exit;
 	}
@@ -3873,9 +3873,9 @@ pbs_release_nodes_given_select(relnodes_input_t *r_input, relnodes_input_select_
 	     chunk2 = parse_plus_spec_r(exec_host2,&last2, &hasprn2);
 	     (chunk != NULL) && (chunk1 != NULL)
 #ifndef PBS_MOM
-				&& (chunkschsel != NULL)
+			&& (chunkschsel != NULL)
 #endif
-				&& (chunk2 != NULL);
+			&& (chunk2 != NULL);
 	     chunk = parse_plus_spec_r(last, &last, &hasprn) ) {
 
 		paren += hasprn;
@@ -4111,8 +4111,8 @@ pbs_release_nodes_given_select(relnodes_input_t *r_input, relnodes_input_select_
 						char *word,*value,*last;
 						int x;
 						for (x = parse_resc_equal_string(extra_res, &word, &value, &last);
-								x == 1;
-								x = parse_resc_equal_string(last, &word, &value, &last)) {
+							x == 1;
+							x = parse_resc_equal_string(last, &word, &value, &last)) {
 							if ((rc = resc_limit_insert_other_res(have, word, value, FALSE))) {
 								sprintf(log_buffer, "failed to insert resource %s", word);
 								log_err(-1, __func__, log_buffer);
@@ -4364,8 +4364,8 @@ pbs_release_nodes_given_select(relnodes_input_t *r_input, relnodes_input_select_
         			log_event(PBSEVENT_DEBUG2, PBS_EVENTCLASS_JOB, LOG_ERR, r_input->jobid, log_buffer);
 #ifndef PBS_MOM
 				for (pres = (resource *)GET_NEXT(need.rl_oth_res);
-						pres != NULL;
-						pres = (resource *)GET_NEXT(pres->rs_link)) {
+					pres != NULL;
+					pres = (resource *)GET_NEXT(pres->rs_link)) {
     				snprintf(log_buffer, sizeof(log_buffer),
     					"(%s=%s)", pres->rs_defin->rs_name, pres->rs_value.at_priv_encoded->al_value);
            			log_event(PBSEVENT_DEBUG2, PBS_EVENTCLASS_JOB, LOG_ERR, r_input->jobid, log_buffer);
@@ -4395,8 +4395,8 @@ pbs_release_nodes_given_select(relnodes_input_t *r_input, relnodes_input_select_
         			log_event(PBSEVENT_DEBUG2, PBS_EVENTCLASS_JOB, LOG_ERR, r_input->jobid, log_buffer);
 #ifndef PBS_MOM
 				for (pres = (resource *)GET_NEXT(need.rl_oth_res);
-						pres != NULL;
-						pres = (resource *)GET_NEXT(pres->rs_link)) {
+					pres != NULL;
+					pres = (resource *)GET_NEXT(pres->rs_link)) {
 					snprintf(log_buffer, sizeof(log_buffer),
 						"(%s=%s)", pres->rs_defin->rs_name, pres->rs_value.at_priv_encoded->al_value);
 					log_event(PBSEVENT_DEBUG2, PBS_EVENTCLASS_JOB, LOG_ERR, r_input->jobid, log_buffer);

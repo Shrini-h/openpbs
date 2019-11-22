@@ -409,7 +409,8 @@ class TestPbsNodeRampDownKeepSelect(TestFunctional):
     def test_with_a_custom_str_res(self, partial_res_list=False):
         """
         submit job with select string containing a custom string resource
-        'select=ncpus=1+ncpus=2:model=abc+ncpus=2:model=def+ncpus=3:model=def+ncpus=3:model=xyz'
+        'select=ncpus=1+ncpus=2:model=abc+ncpus=2:model=def+ncpus=3:model=def+
+        ncpus=3:model=xyz'
         release nodes except the MS and nodes matching below sub select string
         'select=ncpus=2:model=def+ncpus=3:model=def'
         """
