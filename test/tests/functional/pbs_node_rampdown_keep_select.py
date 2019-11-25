@@ -811,3 +811,143 @@ class TestPbsNodeRampDownKeepSelect(TestFunctional):
         'select=2:fltres=9.1'
         """
         self.test_with_a_custom_float_res(partial_res_list=True)
+
+    def test_with_mixed_custom_res(self, partial_res_list=False):
+        """
+        submit job with select string containing a mix of all types of
+        custom resources
+        'select=ncpus=1+ncpus=2:model=abc:longres=7:sizres=7k:fltres=7.1+
+        ncpus=2:model=def:bigmem=true:longres=9:sizres=9k:fltres=9.1+ncpus=3:
+        model=def:bigmem=true:longres=9:sizres=9k:fltres=9.1+ncpus=3:
+        model=xyz:longres=10:sizres=10k:fltres=10.1'
+        release nodes except the MS and nodes matching below sub select string
+        'select=ncpus=2:model=def:bigmem=true:longres=9:sizres=9k:fltres=9.1+
+        ncpus=3:model=def:bigmem=true:longres=9:sizres=9k:fltres=9.1'
+        """
+        # 1. create a custom string resources
+        str_res = 'model'
+        model_a = 'abc'
+        model_b = 'def'
+        model_c = 'xyz'
+        bool_res = 'bigmem'
+        long_res = 'longres'
+        size_res = 'sizres'
+        float_res = 'fltres'
+
+        self.create_res(
+            [
+                new_res(str_res, self.res_s_h),
+                new_res(bool_res, self.res_b_h),
+                new_res(long_res, self.res_l_nh),
+                new_res(size_res, self.res_sz_nh),
+                new_res(float_res, self.res_f_nh)
+            ])
+
+        # 2. add the custom resource to sched_config
+        self.scheduler.add_resource(str_res)
+        self.scheduler.add_resource(long_res)
+        self.scheduler.add_resource(size_res)
+        self.scheduler.add_resource(float_res)
+
+        n1 = n_conf({'resources_available.ncpus': '1'})
+        n2_a = n_conf({'resources_available.ncpus': '2',
+                       'resources_available.'+str_res: model_a,
+                       'resources_available.'+long_res: '7',
+                       'resources_available.'+size_res: '7k',
+                       'resources_available.'+float_res: '7.1'})
+        n2_b = n_conf({'resources_available.ncpus': '2',
+                       'resources_available.'+str_res: model_b,
+                       'resources_available.'+bool_res: 'true',
+                       'resources_available.'+long_res: '9',
+                       'resources_available.'+size_res: '9k',
+                       'resources_available.'+float_res: '9.1'})
+        n3_b = n_conf({'resources_available.ncpus': '3',
+                       'resources_available.'+str_res: model_b,
+                       'resources_available.'+bool_res: 'true',
+                       'resources_available.'+long_res: '9',
+                       'resources_available.'+size_res: '9k',
+                       'resources_available.'+float_res: '9.1'})
+        n3_c = n_conf({'resources_available.ncpus': '3',
+                       'resources_available.'+str_res: model_c,
+                       'resources_available.'+long_res: '10',
+                       'resources_available.'+size_res: '10k',
+                       'resources_available.'+float_res: '10.1'})
+
+        nc_list = [n1, n2_a, n2_b, n3_b, n3_c]
+        # 3. configure the cluster
+        self.config_nodes(nc_list)
+
+        if partial_res_list is False:
+            keep_sel = ('select=ncpus=2:model='+model_b+':' +
+                        bool_res+'=true:'+long_res+'=9:'+size_res+'=9k:' +
+                        float_res+'=9.1+ncpus=3:model='+model_b+':'+bool_res +
+                        '=true:'+long_res+'=9:'+size_res+'=9k:'+float_res +
+                        '=9.1')
+        else:
+            keep_sel = 'select=2:'+bool_res+'=true'
+
+        args = {
+            'qsub_sel': 'ncpus=1+ncpus=2:model='+model_a+':'+long_res+'=7:' +
+            size_res+'=7k:'+float_res+'=7.1+ncpus=2:model='+model_b+':' +
+            bool_res+'=true:'+long_res+'=9:'+size_res+'=9k:'+float_res +
+            '=9.1+ncpus=3:model='+model_b+':'+bool_res+'=true:'+long_res +
+            '=9:'+size_res+'=9k:'+float_res+'=9.1+ncpus=3:model='+model_c +
+            ':'+long_res+'=10:'+size_res+'=10k:'+float_res+'=10.1',
+            'keep_sel': keep_sel,
+            'sched_sel': '1:ncpus=1+1:ncpus=2:model='+model_a+':'+long_res +
+            '=7:'+size_res+'=7kb:'+float_res+'=7.1+1:ncpus=2:model='+model_b +
+            ':'+bool_res+'=True:'+long_res+'=9:'+size_res+'=9kb:'+float_res +
+            '=9.1+1:ncpus=3:model='+model_b+':'+bool_res+'=True:'+long_res +
+            '=9:'+size_res+'=9kb:'+float_res+'=9.1+1:ncpus=3:model='+model_c +
+            ':'+long_res+'=10:'+size_res+'=10kb:'+float_res+'=10.1',
+            'expected_res': self.flatten_node_res(nc_list),
+            'rel_user': TEST_USER,
+            'qsub_sel_after': '1:ncpus=1+1:ncpus=2:model=' +
+            model_b+':'+bool_res+'=True:'+long_res+'=9:'+size_res +
+            '=9kb:'+float_res +
+            '=9.1+1:ncpus=3:model='+model_b+':'+bool_res+'=True:'+long_res +
+            '=9:'+size_res+'=9kb:'+float_res+'=9.1',
+            'sched_sel_after': '1:ncpus=1+1:ncpus=2:model=' +
+            model_b+':'+bool_res+'=True:'+long_res+'=9:'+size_res+'=9kb:' +
+            float_res+'=9.1+1:ncpus=3:model='+model_b+':'+bool_res+'=True:' +
+            long_res+'=9:'+size_res+'=9kb:'+float_res+'=9.1',
+            'expected_res_after': self.flatten_node_res([n1, n2_b, n3_b])
+            }
+
+        job_stat = {'job_state': 'R',
+                    'Resource_List.longres': 35,
+                    'Resource_List.fltres': '35.4',
+                    'Resource_List.sizres': '35kb',
+                    'Resource_List.ncpus': 11,
+                    'Resource_List.nodect': 5,
+                    'Resource_List.select': args['qsub_sel'],
+                    'schedselect': args['sched_sel']}
+
+        args['job_stat'] = job_stat
+
+        job_stat_after = {'job_state': 'R',
+                          'Resource_List.longres': 18,
+                          'Resource_List.sizres': '18kb',
+                          'Resource_List.fltres': '18.2',
+                          'Resource_List.ncpus': 6,
+                          'Resource_List.nodect': 3,
+                          'Resource_List.select': args['qsub_sel_after'],
+                          'schedselect': args['sched_sel_after']}
+
+        args['job_stat_after'] = job_stat_after
+        tc = test_config(**args)
+        self.common_tc_flow(tc)
+
+    def test_with_mixed_custom_res_partial_list(self, partial_res_list=False):
+        """
+        submit job with select string containing a mix of all types of
+        custom resources
+        'select=ncpus=1+ncpus=2:model=abc:longres=7:sizres=7k:fltres=7.1+
+        ncpus=2:model=def:bigmem=true:longres=9:sizres=9k:fltres=9.1+ncpus=3:
+        model=def:bigmem=true:longres=9:sizres=9k:fltres=9.1+ncpus=3:
+        model=xyz:longres=10:sizres=10k:fltres=10.1'
+        release nodes except the MS and nodes matching below sub select string
+        containing partial resource list
+        'select=2:bigmem=true'
+        """
+        self.test_with_mixed_custom_res(partial_res_list=True)
