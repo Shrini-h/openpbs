@@ -65,7 +65,7 @@ class test_config:
     """
     def __init__(self, qsub_sel, keep_sel, sched_sel, expected_res, job_stat,
                  rel_user, qsub_sel_after, sched_sel_after, job_stat_after,
-                 expected_res_after):
+                 expected_res_after, skip_vnode_status_check=False):
         self.qsub_sel = qsub_sel
         self.keep_sel = keep_sel
         self.sched_sel = sched_sel
@@ -76,6 +76,7 @@ class test_config:
         self.sched_sel_after = sched_sel_after
         self.job_stat_after = job_stat_after
         self.expected_res_after = expected_res_after
+        self.skip_vnode_status_check = skip_vnode_status_check
 
 
 @requirements(num_moms=5)
@@ -340,17 +341,18 @@ class TestPbsNodeRampDownKeepSelect(TestFunctional):
                                  job.exechost().hosts]),
                          'exechost failed to correspond with execvnode')
 
-        # 13. check assigned vnodes are in job-busy state
-        self.match_vnode_status(vlist_new, 'job-busy',
-                                [self.vnode_dict[x]['res'].a[
-                                 'resources_available.ncpus'] for x in
-                                 vlist_new])
+        if tc.skip_vnode_status_check is False:
+            # 13. check assigned vnodes are in job-busy state
+            self.match_vnode_status(vlist_new, 'job-busy',
+                                    [self.vnode_dict[x]['res'].a[
+                                     'resources_available.ncpus'] for x in
+                                     vlist_new])
 
-        # 14. compute freed vnodes resource list
-        freed_res = list(set(vlist) - set(vlist_new))
+            # 14. compute freed vnodes resource list
+            freed_res = list(set(vlist) - set(vlist_new))
 
-        # 15. check freed vnodes are in 'free' state
-        self.match_vnode_status(freed_res, 'free')
+            # 15. check freed vnodes are in 'free' state
+            self.match_vnode_status(freed_res, 'free')
 
         # 16. validate PBS_NODEFILE again
         self.pbs_nodefile_match_exec_host(jid, mlist_new, tc.sched_sel_after)
@@ -382,6 +384,7 @@ class TestPbsNodeRampDownKeepSelect(TestFunctional):
             }
 
         job_stat = {'job_state': 'R',
+                    'Resource_List.mpiprocs': 4,
                     'Resource_List.ncpus': 11,
                     'Resource_List.nodect': 5,
                     'Resource_List.select': args['qsub_sel'],
@@ -390,6 +393,7 @@ class TestPbsNodeRampDownKeepSelect(TestFunctional):
         args['job_stat'] = job_stat
 
         job_stat_after = {'job_state': 'R',
+                          'Resource_List.mpiprocs': 4,
                           'Resource_List.ncpus': 6,
                           'Resource_List.nodect': 3,
                           'Resource_List.select': args['qsub_sel_after'],
@@ -950,3 +954,73 @@ class TestPbsNodeRampDownKeepSelect(TestFunctional):
         'select=2:bigmem=true'
         """
         self.test_with_mixed_custom_res(partial_res_list=True)
+
+    def test_schunk_use_case(self, release_partial_schunk=False):
+        """
+        submit job with below select string
+        'ncpus=1+2:ncpus=6+2:ncpus=9:mpiprocs=2'
+        cluster is configured such that we get 4 superchungs
+        release nodes except the MS and nodes matching below sub select string
+        'select=ncpus=6+ncpus=9:mpiprocs=2'
+        so that whole super chunks are released or kept
+        """
+        n1 = n_conf({'resources_available.ncpus': '1'})
+        n2 = n_conf({'resources_available.ncpus': '2'}, 3)
+        n3 = n_conf({'resources_available.ncpus': '3'}, 3)
+
+        nc_list = [n1, n2, n2, n3, n3]
+        # 1. configure the cluster
+        self.config_nodes(nc_list)
+
+        if release_partial_schunk is False:
+            keep_sel = 'select=ncpus=6+ncpus=9:mpiprocs=2'
+            expected_res_list = [n1, n2, n2, n2, n3, n3, n3]
+        else:
+            keep_sel = 'select=ncpus=4+ncpus=6:mpiprocs=2'
+            expected_res_list = [n1, n2, n2, n3, n3]
+
+        args = {
+            'qsub_sel': 'ncpus=1+2:ncpus=6+2:ncpus=9:mpiprocs=2',
+            'keep_sel': keep_sel,
+            'sched_sel': '1:ncpus=1+2:ncpus=6+2:ncpus=9:mpiprocs=2',
+            'expected_res': self.flatten_node_res(
+                [n1, n2, n2, n2, n2, n2, n2, n3, n3, n3, n3, n3, n3]),
+            'rel_user': TEST_USER,
+            'qsub_sel_after': '1:ncpus=1+1:ncpus=6+1:ncpus=9:mpiprocs=2',
+            'sched_sel_after': '1:ncpus=1+1:ncpus=6+1:ncpus=9:mpiprocs=2',
+            'expected_res_after': self.flatten_node_res(expected_res_list)
+            }
+
+        job_stat = {'job_state': 'R',
+                    'Resource_List.mpiprocs': 4,
+                    'Resource_List.ncpus': 31,
+                    'Resource_List.nodect': 5,
+                    'Resource_List.select': args['qsub_sel'],
+                    'schedselect': args['sched_sel']}
+
+        args['job_stat'] = job_stat
+
+        job_stat_after = {'job_state': 'R',
+                          'Resource_List.mpiprocs': 2,
+                          'Resource_List.ncpus': 16,
+                          'Resource_List.nodect': 3,
+                          'Resource_List.select': args['qsub_sel_after'],
+                          'schedselect': args['sched_sel_after']}
+
+        args['job_stat_after'] = job_stat_after
+        if release_partial_schunk is True:
+            args['skip_vnode_status_check'] = True
+
+        tc = test_config(**args)
+        self.common_tc_flow(tc)
+
+    def test_schunk_partial_release_use_case(self):
+        """
+        submit job with below select string
+        'ncpus=1+2:ncpus=6+2:ncpus=9:mpiprocs=2'
+        cluster is configured such that we get 4 superchungs
+        release nodes except the MS and nodes matching below sub select string
+        'select=ncpus=4+ncpus=6:mpiprocs=2'
+        so that some vnodes of super chunks are released or kept
+        """
+        self.test_schunk_use_case(release_partial_schunk=True)
