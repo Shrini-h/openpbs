@@ -92,6 +92,7 @@ class TestPbsNodeRampDownKeepSelect(TestFunctional):
     res_s_h = {'type': 'string', 'flag': 'h'}
     res_b_h = {'type': 'boolean', 'flag': 'h'}
     res_l_nh = {'type': 'long', 'flag': 'nh'}
+    res_sz_nh = {'type': 'size', 'flag': 'nh'}
 
     def pbs_nodefile_match_exec_host(self, jid, ehost, schedselect=None):
         """
@@ -644,3 +645,85 @@ class TestPbsNodeRampDownKeepSelect(TestFunctional):
         'select=2:longres=9'
         """
         self.test_with_a_custom_long_res(partial_res_list=True)
+
+    def test_with_a_custom_size_res(self, partial_res_list=False):
+        """
+        submit job with select string containing a custom size resource
+        'select=ncpus=1+ncpus=2:sizres=7k+ncpus=2:sizres=9k+
+        ncpus=3:sizres=9k+ncpus=3:sizres=10k'
+        release nodes except the MS and nodes matching below sub select string
+        'select=ncpus=2:sizres=9k+ncpus=3:sizres=9k'
+        """
+        # 1. create a custom string resources
+        size_res = 'sizres'
+        self.create_res([new_res(size_res, self.res_sz_nh)])
+
+        # 2. add the custom resource to sched_config
+        self.scheduler.add_resource(size_res)
+
+        n1 = n_conf({'resources_available.ncpus': '1'})
+        n2_a = n_conf({'resources_available.ncpus': '2',
+                       'resources_available.'+size_res: '7k'})
+        n2_b = n_conf({'resources_available.ncpus': '2',
+                       'resources_available.'+size_res: '9k'})
+        n3_b = n_conf({'resources_available.ncpus': '3',
+                       'resources_available.'+size_res: '9k'})
+        n3_c = n_conf({'resources_available.ncpus': '3',
+                       'resources_available.'+size_res: '10k'})
+
+        nc_list = [n1, n2_a, n2_b, n3_b, n3_c]
+        # 3. configure the cluster
+        self.config_nodes(nc_list)
+
+        if partial_res_list is False:
+            keep_sel = ('select=ncpus=2:'+size_res+'=9k+ncpus=3:' +
+                        size_res+'=9k')
+        else:
+            keep_sel = 'select=2:'+size_res+'=9k'
+
+        args = {
+            'qsub_sel': 'ncpus=1+ncpus=2:'+size_res+'=7k+ncpus=2:'+size_res +
+            '=9k+ncpus=3:'+size_res+'=9k+ncpus=3:'+size_res+'=10k',
+            'keep_sel': keep_sel,
+            'sched_sel': '1:ncpus=1+1:ncpus=2:'+size_res+'=7kb+1:ncpus=2:' +
+            size_res+'=9kb+1:ncpus=3:'+size_res+'=9kb+1:ncpus=3:'+size_res +
+            '=10kb',
+            'expected_res': self.flatten_node_res(nc_list),
+            'rel_user': TEST_USER,
+            'qsub_sel_after': '1:ncpus=1+1:ncpus=2:'+size_res +
+            '=9kb+1:ncpus=3:'+size_res+'=9kb',
+            'sched_sel_after': '1:ncpus=1+1:ncpus=2:'+size_res +
+            '=9kb+1:ncpus=3:'+size_res+'=9kb',
+            'expected_res_after': self.flatten_node_res([n1, n2_b, n3_b])
+            }
+
+        job_stat = {'job_state': 'R',
+                    'Resource_List.sizres': '35kb',
+                    'Resource_List.ncpus': 11,
+                    'Resource_List.nodect': 5,
+                    'Resource_List.select': args['qsub_sel'],
+                    'schedselect': args['sched_sel']}
+
+        args['job_stat'] = job_stat
+
+        job_stat_after = {'job_state': 'R',
+                          'Resource_List.sizres': '18kb',
+                          'Resource_List.ncpus': 6,
+                          'Resource_List.nodect': 3,
+                          'Resource_List.select': args['qsub_sel_after'],
+                          'schedselect': args['sched_sel_after']}
+
+        args['job_stat_after'] = job_stat_after
+        tc = test_config(**args)
+        self.common_tc_flow(tc)
+
+    def test_with_a_custom_size_partial_list(self, partial_res_list=False):
+        """
+        submit job with select string containing a custom size resource
+        'select=ncpus=1+ncpus=2:sizres=7k+ncpus=2:sizres=9k+
+        ncpus=3:sizres=9k+ncpus=3:sizres=10k'
+        release nodes except the MS and nodes matching below sub select string
+        containing partial resource list
+        'select=2:sizres=9k'
+        """
+        self.test_with_a_custom_size_res(partial_res_list=True)
