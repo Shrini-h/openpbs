@@ -65,7 +65,8 @@ class test_config:
     """
     def __init__(self, qsub_sel, keep_sel, sched_sel, expected_res, job_stat,
                  rel_user, qsub_sel_after, sched_sel_after, job_stat_after,
-                 expected_res_after, skip_vnode_status_check=False):
+                 expected_res_after, skip_vnode_status_check=False,
+                 use_script=False):
         self.qsub_sel = qsub_sel
         self.keep_sel = keep_sel
         self.sched_sel = sched_sel
@@ -77,6 +78,7 @@ class test_config:
         self.job_stat_after = job_stat_after
         self.expected_res_after = expected_res_after
         self.skip_vnode_status_check = skip_vnode_status_check
+        self.use_script = use_script
 
 
 @requirements(num_moms=5)
@@ -284,7 +286,10 @@ class TestPbsNodeRampDownKeepSelect(TestFunctional):
         """
         # 1. submit the job wih select spec
         job = Job(TEST_USER, attrs={'Resource_List.select': tc.qsub_sel})
-        job.set_sleep_time(1000)
+        if tc.use_script is True:
+            job.create_script(self.jobscript)
+        else:
+            job.set_sleep_time(1000)
         jid = self.server.submit(job)
 
         # 2. validate job state and attributes.
@@ -315,10 +320,13 @@ class TestPbsNodeRampDownKeepSelect(TestFunctional):
         self.pbs_nodefile_match_exec_host(jid, mlist, tc.sched_sel)
 
         # 8. (drum rolls) submit release node command
-        cmd = [self.rel_nodes_cmd, '-j', jid, '-k', tc.keep_sel]
-        ret = self.server.du.run_cmd(self.server.hostname, cmd,
-                                     runas=tc.rel_user)
-        self.assertEqual(ret['rc'], 0)
+        if tc.use_script is False:
+            cmd = [self.rel_nodes_cmd, '-j', jid, '-k', tc.keep_sel]
+            ret = self.server.du.run_cmd(self.server.hostname, cmd,
+                                         runas=tc.rel_user)
+            self.assertEqual(ret['rc'], 0)
+        else:
+            self.server.sigjob(jid, 'INT')
 
         # 9. verify job state and attributes are as expected
         self.server.expect(JOB, tc.job_stat_after, id=jid)
@@ -357,7 +365,7 @@ class TestPbsNodeRampDownKeepSelect(TestFunctional):
         # 16. validate PBS_NODEFILE again
         self.pbs_nodefile_match_exec_host(jid, mlist_new, tc.sched_sel_after)
 
-    def test_basic_use_case_ncpus(self, rel_user=TEST_USER):
+    def test_basic_use_case_ncpus(self, rel_user=TEST_USER, use_script=False):
         """
         submit job with below select string
         'select=ncpus=1+2:ncpus=2+2:ncpus=3:mpiprocs=2'
@@ -393,11 +401,14 @@ class TestPbsNodeRampDownKeepSelect(TestFunctional):
         args['job_stat'] = job_stat
 
         job_stat_after = {'job_state': 'R',
-                          'Resource_List.mpiprocs': 4,
+                          'Resource_List.mpiprocs': 2,
                           'Resource_List.ncpus': 6,
                           'Resource_List.nodect': 3,
                           'Resource_List.select': args['qsub_sel_after'],
                           'schedselect': args['sched_sel_after']}
+
+        if use_script is True:
+            args['use_script'] = True
 
         args['job_stat_after'] = job_stat_after
         tc = test_config(**args)
@@ -411,6 +422,20 @@ class TestPbsNodeRampDownKeepSelect(TestFunctional):
         select string 'select=ncpus=2+ncpus=3:mpiprocs=2'
         """
         self.test_basic_use_case_ncpus(rel_user=ROOT_USER)
+
+    def test_basic_use_case_ncpus_using_script(self):
+        """
+        Like test_basic_use_case_ncpus test except instead of calling
+        pbs_release_nodes from a command line, it is executed
+        inside the job script of a running job. Same results.
+        """
+        self.jobscript = \
+            "#!/bin/sh\n" + \
+            "trap 'pbs_release_nodes -k select=ncpus=2+ncpus=3:mpiprocs=2" + \
+            ";sleep 1000;exit 0' 2\n" + \
+            "sleep 1000\n" + \
+            "exit 0"
+        self.test_basic_use_case_ncpus(use_script=True)
 
     def test_with_a_custom_str_res(self, partial_res_list=False):
         """
