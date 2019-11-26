@@ -984,7 +984,7 @@ class TestPbsNodeRampDownKeepSelect(TestFunctional):
         """
         submit job with below select string
         'ncpus=1+2:ncpus=6+2:ncpus=9:mpiprocs=2'
-        cluster is configured such that we get 4 superchungs
+        cluster is configured such that we get 4 superchunks
         release nodes except the MS and nodes matching below sub select string
         'select=ncpus=6+ncpus=9:mpiprocs=2'
         so that whole super chunks are released or kept
@@ -1049,3 +1049,73 @@ class TestPbsNodeRampDownKeepSelect(TestFunctional):
         so that some vnodes of super chunks are released or kept
         """
         self.test_schunk_use_case(release_partial_schunk=True)
+
+    def test_release_nodes_error(self):
+        """
+        Tests erroneous cases:
+        1. pbs_release_nodes -j <job-id> -a -k <select>
+            "pbs_release_nodes: -a and -k options cannot be used together"
+        2. pbs_release_nodes -j <job-id> -k <select> <node1>...
+            "pbs_release_nodes: cannot supply node list with -k option"
+        3. pbs_release_nodes -j <job-id> -k place=scatter
+            "pbs_release_nodes: only a "select=" string is valid in -k option"
+        4. pbs_release_nodes -j <job-id> -k <select containing undefined res>
+            "pbs_release_nodes: Unknown resource: <undefined res name>"
+        5. pbs_release_nodes -j <job-id> -k <unsatisfying/non-sub select>
+            "pbs_release_nodes: Server returned error 15010 for job"
+        """
+
+        n1 = n_conf({'resources_available.ncpus': '1'})
+        n2 = n_conf({'resources_available.ncpus': '2'})
+        n3 = n_conf({'resources_available.ncpus': '3'})
+
+        nc_list = [n1, n2, n2, n3, n3]
+        self.config_nodes(nc_list)
+        qsub_sel = 'ncpus=1+2:ncpus=2+2:ncpus=3:mpiprocs=2'
+        keep_sel = 'select=ncpus=2+ncpus=3:mpiprocs=2'
+        job = Job(TEST_USER, attrs={'Resource_List.select': qsub_sel})
+        job.set_sleep_time(1000)
+        jid = self.server.submit(job)
+
+        # 1. "pbs_release_nodes: -a and -k options cannot be used together"
+        cmd = [self.rel_nodes_cmd, '-j', jid, '-a', '-k', keep_sel]
+        ret = self.server.du.run_cmd(self.server.hostname, cmd,
+                                     runas=TEST_USER)
+        self.assertNotEqual(ret['rc'], 0)
+        self.assertTrue(ret['err'][0].startswith(
+            'pbs_release_nodes: -a and -k options cannot be used together'))
+
+        # 2. "pbs_release_nodes: cannot supply node list with -k option"
+        cmd = [self.rel_nodes_cmd, '-j', jid, '-k', keep_sel,
+               list(self.vnode_dict.keys())[2]]
+        ret = self.server.du.run_cmd(self.server.hostname, cmd,
+                                     runas=TEST_USER)
+        self.assertNotEqual(ret['rc'], 0)
+        self.assertTrue(ret['err'][0].startswith(
+            'pbs_release_nodes: cannot supply node list with -k option'))
+
+        # 3. "pbs_release_nodes: only a "select=" string is valid in -k option"
+        cmd = [self.rel_nodes_cmd, '-j', jid, '-k', 'place=scatter']
+        ret = self.server.du.run_cmd(self.server.hostname, cmd,
+                                     runas=TEST_USER)
+        self.assertNotEqual(ret['rc'], 0)
+        self.assertTrue(ret['err'][0].startswith(
+            'pbs_release_nodes: only a "select=" string is valid in -k option'
+            ))
+
+        # 4. "pbs_release_nodes: Unknown resource: <undefined res name>"
+        cmd = [self.rel_nodes_cmd, '-j', jid, '-k',
+               'select=ncpus=2:unkownres=3']
+        ret = self.server.du.run_cmd(self.server.hostname, cmd,
+                                     runas=TEST_USER)
+        self.assertNotEqual(ret['rc'], 0)
+        self.assertTrue(ret['err'][0].startswith(
+            'pbs_release_nodes: Unknown resource: unkownres'))
+
+        # 5. "pbs_release_nodes: Server returned error 15010 for job"
+        cmd = [self.rel_nodes_cmd, '-j', jid, '-k', 'select=ncpus=4']
+        ret = self.server.du.run_cmd(self.server.hostname, cmd,
+                                     runas=TEST_USER)
+        self.assertNotEqual(ret['rc'], 0)
+        self.assertTrue(ret['err'][0].startswith(
+            'pbs_release_nodes: Server returned error 15010 for job'))
