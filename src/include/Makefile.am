@@ -73,6 +73,8 @@ noinst_HEADERS = \
 	mom_server.h \
 	mom_vnode.h \
 	net_connect.h \
+	pbs_gss.h \
+	pbs_krb5.h \
 	pbs_array_list.h \
 	pbs_assert.h \
 	pbs_client_thread.h \
@@ -89,6 +91,7 @@ noinst_HEADERS = \
 	pbs_python.h \
 	pbs_python_private.h \
 	pbs_share.h \
+	pbs_undolr.h \
 	pbs_version.h \
 	placementsets.h \
 	portability.h \

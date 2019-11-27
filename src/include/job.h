@@ -279,6 +279,9 @@ enum job_atr {
 	JOB_ATR_resc_released_list,
 	JOB_ATR_relnodes_on_stageout,
 	JOB_ATR_tolerate_node_failures,
+	JOB_ATR_submit_host,
+	JOB_ATR_cred_id,
+	JOB_ATR_cred_validity,
 #include "site_job_attr_enum.h"
 
 	JOB_ATR_UNKN,		/* the special "unknown" type		  */
@@ -711,6 +714,11 @@ struct job {
 			unsigned long long	ji_pagg;
 			/* ALPS process aggregate ID */
 #endif	/* MOM_ALPS */
+#if defined(PBS_SECURITY) && (PBS_SECURITY == KRB5)
+#if defined(HAVE_LIBKAFS) || defined(HAVE_LIBKOPENAFS)
+			int32_t	ji_pag;		/* afs token group id */
+#endif
+#endif
 #endif /* PBS_MOM */
 		} ji_ext;
 	} ji_extended;
@@ -862,6 +870,8 @@ typedef struct	infoent {
 #define IM_SEND_RESC		22
 #define IM_UPDATE_JOB		23
 #define IM_EXEC_PROLOGUE	24
+#define IM_CRED 		25
+#define IM_PMIX			26
 
 #define IM_ERROR		99
 #define IM_ERROR2		100
@@ -1069,6 +1079,7 @@ task_find	(job		*pjob,
 				     * unexpected exception or
 				     * hook execution timed out
 				     */
+#define JOB_EXEC_FAIL_KRB5     -23 /* Error no kerberos credentials supplied */
 #define JOB_EXEC_UPDATE_ALPS_RESV_ID 1 /* Update ALPS reservation ID to parent mom as soon
 					* as it is available.
 					* This is neither a success nor a failure exit code,
@@ -1159,6 +1170,8 @@ extern int   job_or_resv_save_db(void *, int, int);
 #define job_or_resv_save job_or_resv_save_db
 #define job_or_resv_recov job_or_resv_recov_db
 /* server uses the db versions so just redefine - saves lots of code changes */
+
+extern char *get_job_credid(char *jobid);
 
 #endif
 

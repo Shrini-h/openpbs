@@ -94,7 +94,10 @@
 #include	"pbs_internal.h"
 #include	"placementsets.h"
 #include	"pbs_reliable.h"
-
+#include	"renew_creds.h"
+#ifdef PMIX
+#include	"mom_pmix.h"
+#endif
 
 /* Global Data Items */
 
@@ -159,7 +162,11 @@ char	task_fmt[] = "/%8.8X";
  **	a sister when she gets JOIN_JOB.  Called by MS after she gets
  **	good JOIN_JOB replies from all the sisters.
  */
+#ifdef PMIX
+pbs_jobnode_t	job_join_extra = &pbs_pmix_job_join_extra;
+#else
 pbs_jobnode_t	job_join_extra = NULL;
+#endif
 
 /*
  **	Used by a sister node to write extra information back to MS
@@ -179,7 +186,7 @@ pbs_jobndstm_t	job_join_read = NULL;
 pbs_jobndstm_t	job_setup_send = NULL;
 
 /*
- **	Called by a sister to read an SETUP_JOB message and do any
+ **	Called by a sister to read a SETUP_JOB message and do any
  **	special setup required at job start.
  */
 pbs_jobstream_t	job_setup_final = NULL;
@@ -190,9 +197,14 @@ pbs_jobstream_t	job_setup_final = NULL;
 pbs_jobvoid_t	job_end_final = NULL;
 
 /*
- **	Called at job end to undo the setup done in job_setup_final.
+ **	Called at job end to undo the setup done in job_setup_final
+ **	or job_join_extra.
  */
+#ifdef PMIX
+pbs_jobfunc_t	job_clean_extra = &pbs_pmix_job_clean_extra;
+#else
 pbs_jobfunc_t	job_clean_extra = NULL;
+#endif
 
 /*
  **	Free memory allocated in ji_setup and hn_setup for all nodes.
@@ -849,7 +861,7 @@ is_comm_up(int maturity_time)
  *				vnodes assigned to the job that
  *				have non-functioning parent moms.
  *
- * @[aram[out]  failed_vnodes - returns in here the vnodes and their resources
+ * @param[out]  failed_vnodes - returns in here the vnodes and their resources
  *				that have been taken out from the list of
  *				vnodes assigned with non-functioning parent
  *				moms.
@@ -2228,6 +2240,7 @@ node_bailout(job *pjob, hnodent *np)
 			case	IM_OBIT_TASK:
 			case	IM_GET_INFO:
 			case	IM_GET_RESC:
+			case	IM_CRED:
 				/*
 				 ** A user attempt failed, inform process.
 				 */
@@ -2261,6 +2274,18 @@ node_bailout(job *pjob, hnodent *np)
 				log_joberr(-1, __func__, log_buffer, pjob->ji_qs.ji_jobid);
 				pjob->ji_nodekill = np->hn_node;
 				break;
+
+#ifdef PMIX
+			case	IM_PMIX:
+				/* I am MS and a node has failed a PMIX request. */
+				DBPRT(("%s: IM_PMIX %s\n", __func__, pjob->ji_qs.ji_jobid))
+				snprintf(log_buffer, sizeof(log_buffer),
+			 		"sister node %s failed PMIx operation",
+						np->hn_host?np->hn_host:"");
+				exec_bail(pjob, JOB_EXEC_RETRY, log_buffer);
+				break;
+#endif /* PMIX */
+
 			case	IM_UPDATE_JOB:
 				/*
 				 ** I'm MS and a node has failed during job update.
@@ -3044,7 +3069,7 @@ im_request(int stream, int version)
   	char			*delete_job_msg = NULL;
 
 	DBPRT(("%s: stream %d version %d\n", __func__, stream, version))
-	if (version != IM_PROTOCOL_VER && version !=IM_OLD_PROTOCOL_VER) {
+	if ((version != IM_PROTOCOL_VER) && (version != IM_OLD_PROTOCOL_VER)) {
 		sprintf(log_buffer, "protocol version %d unknown", version);
 		log_err(-1, __func__, log_buffer);
 		rpp_close(stream);
@@ -3390,7 +3415,7 @@ im_request(int stream, int version)
 
 			/* create staging and execution dir if sandbox=PRIVATE mode is enabled */
 			/* this code should appear after check_pwd() since */
-			/* mkjobdir() dependes on job uid and gid being set correctly */
+			/* mkjobdir() depends on job uid and gid being set correctly */
 			if ((pjob->ji_wattr[(int)JOB_ATR_sandbox].at_flags & ATR_VFLAG_SET) &&
 				(strcasecmp(pjob->ji_wattr[JOB_ATR_sandbox].at_val.at_str, "PRIVATE") == 0)) {
 #ifdef WIN32
@@ -3534,7 +3559,7 @@ join_err:
 	 ** reply == 1 means that this is a request to which a reply may happen
 	 */
 	if (reply == 0) {
-		for (nodeidx=0; nodeidx<pjob->ji_numnodes; nodeidx++) {
+		for (nodeidx = 0; nodeidx < pjob->ji_numnodes; nodeidx++) {
 			np = &pjob->ji_hosts[nodeidx];
 
 			if (np->hn_stream == stream) {
@@ -3943,7 +3968,9 @@ join_err:
 				sprintf(log_buffer, "SPAWN_TASK read of envp array");
 				goto err;
 			}
-
+#ifdef PMIX
+			pbs_pmix_register_client(pjob, tvnodeid, &envp);
+#endif
 			ret = DIS_SUCCESS;
 			if ((ptask = momtask_create(pjob)) == NULL) {
 				SEND_ERR(PBSE_SYSTEM);
@@ -4211,8 +4238,36 @@ join_err:
 			ret = diswul(stream, resc_used(pjob, "cpupercent", gettime));
 
 			send_resc_used_to_ms(stream, jobid);
-
 			break;
+
+#ifdef PMIX
+		case	IM_PMIX:
+			/*
+			 * Sender is MOM requesting a PMIX operation
+			 * be carried out.
+			 *
+			 * auxiliary info (
+			 *	sending node	tm_node_id;
+			 *	taskid		tm_task_id;
+			 *	operation	string;
+			 * )
+			 */
+			sprintf(log_buffer, "IM_PMIX request received");
+			log_event(PBSEVENT_JOB, PBS_EVENTCLASS_JOB, LOG_DEBUG,
+				jobid, log_buffer);
+			/* TODO: Read aux info, processes request, and send response */
+			sprintf(log_buffer, "Handle IM_PMIX request");
+			log_event(PBSEVENT_JOB, PBS_EVENTCLASS_JOB, LOG_DEBUG,
+				jobid, log_buffer);
+			sprintf(log_buffer, "IM_PMIX replying IM_ALL_OK");
+			log_event(PBSEVENT_JOB, PBS_EVENTCLASS_JOB, LOG_DEBUG,
+				jobid, log_buffer);
+			ret = im_compose(stream, jobid, cookie, IM_ALL_OKAY,
+				event, fromtask, IM_OLD_PROTOCOL_VER);
+			if (ret != DIS_SUCCESS)
+				break;
+			break;
+#endif
 
 		case	IM_SUSPEND:
 		case	IM_RESUME:
@@ -4868,6 +4923,32 @@ join_err:
 						pjob->ji_nodekill = np->hn_node;
 					break;
 
+#ifdef PMIX
+				case	IM_PMIX:
+					/*
+					 * I must be mother superior for the job and
+					 * this is a reply for a PMIX operation.
+					 *
+					 * auxiliary info (
+					 *	operation	int;
+					 * )
+					 */
+					sprintf(log_buffer, "IM_PMIX reply received");
+					log_event(PBSEVENT_JOB, PBS_EVENTCLASS_JOB, LOG_DEBUG,
+						jobid, log_buffer);
+					if ((pjob->ji_qs.ji_svrflags & JOB_SVFLG_HERE) == 0) {
+						sprintf(log_buffer,
+							"Received IM_PMIX reply "
+							"and this is not MS");
+						goto err;
+					}
+					/* TODO: Handle IM_PMIX reply */
+					sprintf(log_buffer, "Handle IM_PMIX reply here");
+					log_event(PBSEVENT_JOB, PBS_EVENTCLASS_JOB, LOG_DEBUG,
+						jobid, log_buffer);
+					break;
+#endif /* PMIX */
+
 				case	IM_UPDATE_JOB:
 					for (i = 0; i < pjob->ji_numnodes; i++) {
 						hnodent *xp = &pjob->ji_hosts[i];
@@ -4951,6 +5032,14 @@ join_err:
 					break;
 			}
 			break;
+
+#if defined(PBS_SECURITY) && (PBS_SECURITY == KRB5)
+		case	IM_CRED:
+			ret = im_cred_read(pjob, np, stream);
+			if (ret != DIS_SUCCESS)
+				goto err;
+			break;
+#endif
 
 		case	IM_ERROR:		/* this is a REPLY */
 		case	IM_ERROR2:		/* this is a REPLY */
@@ -5262,6 +5351,27 @@ join_err:
 					np->hn_sister = errcode ? errcode : SISTER_BADPOLL;
 					pjob->ji_nodekill = np->hn_node;
 					break;
+
+#ifdef PMIX
+				case	IM_PMIX:
+					/*
+					 * I must be mother superior for the job and
+					 * this is an error response to a PMIX request.
+					 */
+					sprintf(log_buffer, "IM_PMIX error encountered");
+					log_event(PBSEVENT_JOB, PBS_EVENTCLASS_JOB, LOG_DEBUG,
+						jobid, log_buffer);
+					if ((pjob->ji_qs.ji_svrflags & JOB_SVFLG_HERE) == 0) {
+						sprintf(log_buffer,
+							"IM_PMIX error and this is not MS");
+						goto err;
+					}
+					/* TODO: Handle IM_PMIX error */
+					sprintf(log_buffer, "Handle IM_PMIX error here");
+					log_event(PBSEVENT_JOB, PBS_EVENTCLASS_JOB, LOG_DEBUG,
+						jobid, log_buffer);
+					break;
+#endif /* PMIX */
 
 				case	IM_UPDATE_JOB:
 					if ((pjob->ji_qs.ji_svrflags & JOB_SVFLG_HERE) == 0) {
@@ -6253,6 +6363,9 @@ aterr:
 			 ** If the spawn happens on me, just do it.
 			 */
 			if (pjob->ji_nodeid == TO_PHYNODE(tvnodeid)) {
+#ifdef PMIX
+				pbs_pmix_register_client(pjob, tvnodeid, &envp);
+#endif
 				i = TM_ERROR;
 				ptask = momtask_create(pjob);
 				if (ptask != NULL) {

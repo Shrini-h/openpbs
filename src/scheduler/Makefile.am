@@ -41,7 +41,7 @@ lib_LIBRARIES = libpbs_sched.a
 libpbs_sched_a_CPPFLAGS = \
 	-I$(top_srcdir)/src/include \
 	@libz_inc@ \
-	@PYTHON_INCLUDES@
+	@PYTHON_INCLUDES@ @KRB5_CFLAGS@
 libpbs_sched_a_SOURCES = \
 	buckets.c \
 	buckets.h \
@@ -96,19 +96,20 @@ libpbs_sched_a_SOURCES = \
 	state_count.h \
 	site_code.c \
 	site_code.h \
-	site_data.h 
+	site_data.h
 
 sbin_PROGRAMS = pbs_sched pbsfs
 
 common_cppflags = \
 	-I$(top_srcdir)/src/include \
 	@PYTHON_INCLUDES@ \
-	@libical_inc@
+	@libical_inc@ \
+	@KRB5_CFLAGS@
 
 common_libs = \
 	$(builddir)/libpbs_sched.a \
-	$(top_builddir)/src/lib/Libutil/libutil.a \
 	$(top_builddir)/src/lib/Libtpp/libtpp.a \
+	$(top_builddir)/src/lib/Libutil/libutil.a \
 	$(top_builddir)/src/lib/Liblog/liblog.a \
 	$(top_builddir)/src/lib/Libpbs/.libs/libpbs.a \
 	$(top_builddir)/src/lib/Libnet/libnet.a \
@@ -116,7 +117,8 @@ common_libs = \
 	@PYTHON_LDFLAGS@ \
 	@PYTHON_LIBS@ \
 	@libz_lib@ \
-	@libical_lib@
+	@libical_lib@ \
+	@KRB5_LIBS@
 
 pbs_sched_CPPFLAGS = ${common_cppflags}
 pbs_sched_LDADD = ${common_libs}
@@ -133,3 +135,6 @@ dist_sysconf_DATA = \
 	pbs_resource_group \
 	pbs_sched_config
 
+if UNDOLR_ENABLED
+common_libs += @libundolr_lib@
+endif

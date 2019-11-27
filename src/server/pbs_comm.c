@@ -88,6 +88,7 @@
 #include "tpp_common.h"
 #include "server_limits.h"
 #include "pbs_version.h"
+#include "pbs_undolr.h"
 
 char daemonname[PBS_MAXHOSTNAME+8];
 extern char	*msg_corelimit;
@@ -1047,7 +1048,7 @@ main(int argc, char **argv)
 	}
 
 	rc = 0;
-	if (pbs_conf.auth_method == AUTH_RESV_PORT) {
+	if (pbs_conf.auth_method == AUTH_RESV_PORT || pbs_conf.auth_method == AUTH_GSS) {
 		rc = set_tpp_config(&pbs_conf, &conf, host, port, routers, pbs_conf.pbs_use_compression,
 				TPP_AUTH_RESV_PORT, NULL, NULL);
 	} else {
@@ -1138,12 +1139,15 @@ main(int argc, char **argv)
 		log_err(errno, __func__, "sigaction for PIPE");
 		return (2);
 	}
-	if (sigaction(SIGUSR1, &act, &oact) != 0) {
-		log_err(errno, __func__, "sigaction for USR1");
-		return (2);
-	}
 	if (sigaction(SIGUSR2, &act, &oact) != 0) {
 		log_err(errno, __func__, "sigaction for USR2");
+		return (2);
+	}
+#ifdef PBS_UNDOLR_ENABLED	
+	act.sa_handler = catch_sigusr1;
+#endif
+	if (sigaction(SIGUSR1, &act, &oact) != 0) {
+		log_err(errno, __func__, "sigaction for USR1");
 		return (2);
 	}
 #endif 	/* WIN32 */
@@ -1183,6 +1187,10 @@ main(int argc, char **argv)
 				tpp_set_logmask(*log_event_mask);
 			}
 		}
+#ifdef PBS_UNDOLR_ENABLED
+		if (sigusr1_flag)
+			undolr();
+#endif
 
 		sleep(3);
 	}

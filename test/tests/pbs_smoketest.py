@@ -314,17 +314,31 @@ class SmokeTest(PBSTestSuite):
         """
         Test for limits
         """
-        a = {'resources_available.ncpus': 4}
+        a = {'resources_available.ncpus': 4, 'resources_available.mem': '2gb'}
         self.server.create_vnodes('lt', a, 2, self.mom)
-        a = {'max_run_res.ncpus': '[u:' + str(TEST_USER) + '=1]'}
+        a = {'max_run_res.ncpus': '[u:' + str(TEST_USER) + '=2]'}
         self.server.manager(MGR_CMD_SET, SERVER, a)
         for _ in range(3):
             j = Job(TEST_USER)
             self.server.submit(j)
         a = {'server_state': 'Scheduling'}
         self.server.expect(SERVER, a, op=NE)
-        a = {'job_state=R': 1, 'euser=' + str(TEST_USER): 1}
+        a = {'job_state=R': 2, 'euser=' + str(TEST_USER): 2}
         self.server.expect(JOB, a, attrop=PTL_AND)
+
+        # Now set limit on mem as well and submit 2 jobs, each requesting
+        # a different limit resource and check both of them run
+        self.server.cleanup_jobs()
+        a = {'max_run_res.mem': '[u:' + str(TEST_USER) + '=1gb]'}
+        self.server.manager(MGR_CMD_SET, SERVER, a)
+        a = {'Resource_List.ncpus': 1}
+        j = Job(TEST_USER, a)
+        jid = self.server.submit(j)
+        self.server.expect(JOB, {'job_state': 'R'}, id=jid)
+        a = {'Resource_List.mem': '1gb'}
+        j = Job(TEST_USER, a)
+        jid = self.server.submit(j)
+        self.server.expect(JOB, {'job_state': 'R'}, id=jid)
 
     @skipOnCpuSet
     def test_finished_jobs(self):
@@ -338,7 +352,8 @@ class SmokeTest(PBSTestSuite):
         a = {'Resource_List.ncpus': 2}
         j = Job(TEST_USER, a)
         j.set_sleep_time(15)
-        j.create_eatcpu_job(15)
+        mom = self.moms.values()[0].shortname
+        j.create_eatcpu_job(15, mom)
         jid = self.server.submit(j)
         self.server.expect(JOB, {'job_state': 'F'}, extend='x', offset=15,
                            interval=1, id=jid)
@@ -1517,6 +1532,11 @@ class SmokeTest(PBSTestSuite):
         Test basic functionality of man pages
         """
         pbs_conf = self.du.parse_pbs_config(self.server.shortname)
+        man_cmd = "man"
+        man_bin_path = self.du.which(exe=man_cmd)
+        if man_bin_path == man_cmd:
+            self.skip_test(reason='man command is not available. Please '
+                                  'install man and try again.')
         manpath = os.path.join(pbs_conf['PBS_EXEC'], "share", "man")
         pbs_cmnds = ["pbsnodes", "qsub"]
         os.environ['MANPATH'] = manpath

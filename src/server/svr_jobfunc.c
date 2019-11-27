@@ -261,12 +261,12 @@ tickle_for_reply(void)
 int
 svr_enquejob(job *pjob)
 {
-	attribute      *pattrjb;
-	attribute_def  *pdef;
-	job	       *pjcur;
-	pbs_queue      *pque;
-	int		rc;
-	pbs_sched	*psched;
+	attribute *pattrjb;
+	attribute_def *pdef;
+	job *pjcur;
+	pbs_queue *pque;
+	int rc;
+	pbs_sched *psched;
 
 	/* make sure queue is still there, there exist a small window ... */
 
@@ -412,11 +412,6 @@ svr_enquejob(job *pjob)
 		pjob->ji_wattr[(int)JOB_ATR_qtime].at_val.at_long = time_now;
 		pjob->ji_wattr[(int)JOB_ATR_qtime].at_flags |=
 			ATR_VFLAG_SET | ATR_VFLAG_MODCACHE;
-
-		/* issue enqueued accounting record */
-
-		(void)sprintf(log_buffer, "queue=%s", pque->qu_qs.qu_name);
-		account_record(PBS_ACCT_QUEUE, pjob, log_buffer);
 	}
 
 	/*
@@ -1516,7 +1511,7 @@ check_block(job *pjob, char *message)
 	pjob->ji_wattr[(int) JOB_ATR_block].at_flags |= ATR_VFLAG_MODCACHE;
 	pjob->ji_modified = 1;
 
-	phost = get_hostPart(pjob->ji_wattr[(int)JOB_ATR_job_owner].at_val.at_str);
+	phost = pjob->ji_wattr[(int)JOB_ATR_submit_host].at_val.at_str;
 	if (port == 0 || phost == NULL) {
 		sprintf(log_buffer, "%s: cannot reply %s:%d", __func__,
 			phost == NULL ? "<no host>" : phost, port);
@@ -1800,7 +1795,7 @@ prefix_std_file(job *pjob, int key)
 	if (pbs_conf.pbs_output_host_name)
 		outputhost = pbs_conf.pbs_output_host_name;
 	else
-		outputhost = get_hostPart(pjob->ji_wattr[(int)JOB_ATR_job_owner].at_val.at_str);
+		outputhost = pjob->ji_wattr[(int)JOB_ATR_submit_host].at_val.at_str;
 	wdir     = get_variable(pjob, "PBS_O_WORKDIR");
 	if (outputhost) {
 		int len;
@@ -2184,6 +2179,8 @@ set_chunk_sum(attribute  *pselectattr, attribute *pattr)
 							return PBSE_BADATVAL;	/* illegal null value */
 						if (svr_resc_sum[i].rs_def->rs_type == ATR_TYPE_SIZE)
 							tmpatr.at_val.at_size.atsv_num *= nchk;
+						else if (svr_resc_sum[i].rs_def->rs_type == ATR_TYPE_FLOAT)
+							tmpatr.at_val.at_float *= nchk;
 						else
 							tmpatr.at_val.at_long *= nchk;
 
@@ -5029,6 +5026,9 @@ svr_saveorpurge_finjobhist(job *pjob)
 		svr_setjob_histinfo(pjob, T_FIN_JOB);
 		if (pjob->ji_ajtrk)
 			pjob->ji_ajtrk->tkm_flags &= ~TKMFLG_CHK_ARRAY;
+		if (pjob->ji_terminated && (pjob->ji_qs.ji_svrflags & JOB_SVFLG_SubJob) &&
+				pjob->ji_parentaj && pjob->ji_parentaj->ji_ajtrk)
+			pjob->ji_parentaj->ji_ajtrk->tkm_dsubjsct++;
 	} else {
 		if (pjob->ji_deletehistory && flag) {
 			log_event(PBSEVENT_DEBUG, PBS_EVENTCLASS_JOB,

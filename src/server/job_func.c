@@ -135,6 +135,9 @@
 #include "net_connect.h"
 #include "pbs_reliable.h"
 
+#if defined(PBS_MOM) && defined(PBS_SECURITY) && (PBS_SECURITY == KRB5)
+#include "renew_creds.h"
+#endif
 
 /* External functions */
 
@@ -218,6 +221,24 @@ tasks_free(job *pj)
 	}
 }
 #else	/* PBS_MOM */
+
+char *get_job_credid(char *jobid)
+{
+#if defined(PBS_SECURITY) && (PBS_SECURITY == KRB5)
+	job *pjob;
+
+	if ((pjob = find_job(jobid)) == NULL)
+		return NULL;
+
+	if (pjob->ji_wattr[(int)JOB_ATR_cred_id].at_flags & ATR_VFLAG_SET) {
+		return pjob->ji_wattr[(int)JOB_ATR_cred_id].at_val.at_str;
+	}
+#endif
+
+	return NULL;
+}
+
+
 /**
  * @brief
  * 		job_abt - abort a job
@@ -363,6 +384,11 @@ job_alloc(void)
 	pj->ji_parent2child_moms_status_pipe = -1;
 	pj->ji_updated = 0;
 	pj->ji_hook_running_bg_on = 0;
+#if defined(PBS_SECURITY) && (PBS_SECURITY == KRB5)
+#if defined(HAVE_LIBKAFS) || defined(HAVE_LIBKOPENAFS)
+	pj->ji_extended.ji_ext.ji_pag = 0;
+#endif
+#endif
 #ifdef WIN32
 	pj->ji_hJob = NULL;
 	pj->ji_user = NULL;
@@ -801,8 +827,11 @@ job_purge(job *pjob)
 		if ((pjob->ji_qs.ji_svrflags & JOB_SVFLG_SubJob) && (pjob->ji_qs.ji_state != JOB_STATE_FINISHED)) {
 			if ((pjob->ji_qs.ji_substate == JOB_SUBSTATE_RERUN3) || (pjob->ji_qs.ji_substate == JOB_SUBSTATE_QUEUED))
 				update_subjob_state(pjob, JOB_STATE_QUEUED);
-			else
+			else {
+				if (pjob->ji_terminated && pjob->ji_parentaj && pjob->ji_parentaj->ji_ajtrk)
+					pjob->ji_parentaj->ji_ajtrk->tkm_dsubjsct++;
 				update_subjob_state(pjob, JOB_STATE_EXPIRED);
+			}
 		}
 
 		(void)account_entity_limit_usages(pjob, NULL, NULL, DECR,
@@ -822,6 +851,10 @@ job_purge(job *pjob)
 		child_process = 1;
 		pid = fork();
 		if (pid > 0) {
+#if defined(PBS_SECURITY) && (PBS_SECURITY == KRB5)
+			delete_cred(pjob->ji_qs.ji_jobid);
+#endif
+
 			/* parent mom */
 			job_free(pjob);
 			return;
@@ -941,6 +974,11 @@ job_purge(job *pjob)
 				pjob->ji_qs.ji_jobid);
 		}
 	}
+
+#if defined(PBS_SECURITY) && (PBS_SECURITY == KRB5)
+	delete_cred(pjob->ji_qs.ji_jobid);
+#endif
+
 #else
 	/* delete job and dependants from database */
 	obj.pbs_db_obj_type = PBS_DB_JOB;

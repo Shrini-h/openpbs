@@ -97,6 +97,7 @@ extern char	*path_svrlive;
 #ifndef PBS_MOM
 extern char *pbs_server_name;
 extern pbs_db_conn_t	*svr_db_conn;
+extern void sched_free(pbs_sched *psched);
 #endif
 
 #ifdef NAS /* localmod 005 */
@@ -267,12 +268,8 @@ int
 svr_recov_db(void)
 {
 	pbs_db_conn_t *conn = (pbs_db_conn_t *) svr_db_conn;
-	pbs_db_svr_info_t dbsvr;
+	pbs_db_svr_info_t dbsvr = {0};
 	pbs_db_obj_info_t obj;
-
-	/* load server_qs */
-	dbsvr.attr_list.attr_count = 0;
-	dbsvr.attr_list.attributes = NULL;
 
 	obj.pbs_db_obj_type = PBS_DB_SVR;
 	obj.pbs_db_un.pbs_db_svr = &dbsvr;
@@ -281,14 +278,17 @@ svr_recov_db(void)
 	if (pbs_db_load_obj(conn, &obj) != 0)
 		goto db_err;
 
-	if (db_to_svr_svr(&server, &dbsvr) != 0)
+	if (db_to_svr_svr(&server, &dbsvr) != 0) {
+		log_err(-1, "svr_recov", "Failed to recover server");
 		goto db_err;
+	}
 
 	pbs_db_reset_obj(&obj);
 
 	return (0);
 
 db_err:
+	pbs_db_reset_obj(&obj);
 	return -1;
 }
 
@@ -387,7 +387,7 @@ pbs_sched *
 sched_recov_db(char *sname)
 {
 	pbs_sched		*ps;
-	pbs_db_sched_info_t	dbsched;
+	pbs_db_sched_info_t	dbsched = {{0}};
 	pbs_db_obj_info_t	obj;
 	pbs_db_conn_t		*conn = (pbs_db_conn_t *) svr_db_conn;
 
@@ -416,9 +416,12 @@ sched_recov_db(char *sname)
 	return (ps);
 
 db_err:
-	log_err(-1, "sched_recov", "read of scheddb failed");
+	pbs_db_reset_obj(&obj);
+
+	sprintf(log_buffer, "Failed to recover sched %s", sname);
+	log_err(-1, "sched_recov", log_buffer);
 	if (ps)
-		free(ps);
+		sched_free(ps);
 	return NULL;
 }
 

@@ -1170,7 +1170,7 @@ class BatchUtils(object):
     subjob_tag = re.compile(r"(?P<jobid>[\d]+)\[(?P<subjobid>[0-9]+)\]*" +
                             r"[.]*[(?P<server>.*)]*")
 
-    pbsobjname_re = re.compile(r"^([\w\d][\d\w\s]*:?[\s]+)" +
+    pbsobjname_re = re.compile(r"^(?P<tag>[\w\d][\d\w\s]*:?[\s]+)" +
                                r"*(?P<name>[\w@\.\d\[\]-]+)$")
     pbsobjattrval_re = re.compile(r"""
                             [\s]*(?P<attribute>[\w\d\.-]+)
@@ -1771,6 +1771,9 @@ class BatchUtils(object):
                         objlist.append(d.copy())
                 d = {}
                 d['id'] = m.group('name')
+                _t = m.group('tag')
+                if _t == 'Resv ID: ':
+                    d[_t.replace(': ', '')] = d['id']
             else:
                 m = self.pbsobjattrval_re.match(l)
                 if m:
@@ -3503,7 +3506,7 @@ class PBSService(PBSObject):
             self.pbs_conf['PBS_HOME'] = self.snap
             self.pbs_conf['PBS_EXEC'] = self.snap
             self.pbs_conf['PBS_SERVER'] = self.hostname
-            m = re.match('.*snapshot_(?P<datetime>\d{6,6}_\d{6,6}).*',
+            m = re.match(r'.*snapshot_(?P<datetime>\d{6,6}_\d{6,6}).*',
                          self.snap)
             if m:
                 tm = time.strptime(m.group('datetime'), "%y%m%d_%H%M%S")
@@ -5048,27 +5051,20 @@ class Server(PBSService):
         self.logger.info(self.logprefix +
                          'reverting configuration to defaults')
         self.cleanup_jobs_and_reservations()
-        self.mpp_hook = os.path.join(self.pbs_conf['PBS_HOME'],
-                                     'server_priv', 'hooks',
-                                     'PBS_translate_mpp.HK')
-        self.dflt_mpp_hook = os.path.join(self.pbs_conf['PBS_EXEC'],
-                                          'lib', 'python', 'altair',
-                                          'pbs_hooks',
-                                          'PBS_translate_mpp.HK')
-        self.jacs_hk = os.path.join(self.pbs_conf['PBS_HOME'],
+        self.atom_hk = os.path.join(self.pbs_conf['PBS_HOME'],
                                     'server_priv', 'hooks',
-                                    'PBS_cray_jacs.HK')
-        self.dflt_jacs_hk = os.path.join(self.pbs_conf['PBS_EXEC'],
+                                    'PBS_cray_atom.HK')
+        self.dflt_atom_hk = os.path.join(self.pbs_conf['PBS_EXEC'],
                                          'lib', 'python', 'altair',
                                          'pbs_hooks',
-                                         'PBS_cray_jacs.HK')
-        self.jacs_cf = os.path.join(self.pbs_conf['PBS_HOME'],
+                                         'PBS_cray_atom.HK')
+        self.atom_cf = os.path.join(self.pbs_conf['PBS_HOME'],
                                     'server_priv', 'hooks',
-                                    'PBS_cray_jacs.CF')
-        self.dflt_jacs_cf = os.path.join(self.pbs_conf['PBS_EXEC'],
+                                    'PBS_cray_atom.CF')
+        self.dflt_atom_cf = os.path.join(self.pbs_conf['PBS_EXEC'],
                                          'lib', 'python', 'altair',
                                          'pbs_hooks',
-                                         'PBS_cray_jacs.CF')
+                                         'PBS_cray_atom.CF')
         self.unset_svr_attrib()
         for k in self.dflt_attributes.keys():
             if(k not in self.attributes or
@@ -5097,23 +5093,17 @@ class Server(PBSService):
         if delnodes:
             self.delete_nodes()
         if reverthooks:
-            if self.platform == 'cray' or self.platform == 'craysim':
-                if self.du.cmp(self.hostname, self.dflt_mpp_hook,
-                               self.mpp_hook, sudo=True) != 0:
-                    self.du.run_copy(self.hostname, self.dflt_mpp_hook,
-                                     self.mpp_hook, mode=0o644, sudo=True)
-                    self.signal('-HUP')
             if self.platform == 'shasta':
                 dohup = False
-                if (self.du.cmp(self.hostname, self.dflt_jacs_hk,
-                                self.jacs_hk, sudo=True) != 0):
-                    self.du.run_copy(self.hostname, self.dflt_jacs_hk,
-                                     self.jacs_hk, mode=0o644, sudo=True)
+                if (self.du.cmp(self.hostname, self.dflt_atom_hk,
+                                self.atom_hk, sudo=True) != 0):
+                    self.du.run_copy(self.hostname, self.dflt_atom_hk,
+                                     self.atom_hk, mode=0o644, sudo=True)
                     dohup = True
-                if self.du.cmp(self.hostname, self.dflt_jacs_cf,
-                               self.jacs_cf, sudo=True) != 0:
-                    self.du.run_copy(self.hostname, self.dflt_jacs_cf,
-                                     self.jacs_cf, mode=0o644, sudo=True)
+                if self.du.cmp(self.hostname, self.dflt_atom_cf,
+                               self.atom_cf, sudo=True) != 0:
+                    self.du.run_copy(self.hostname, self.dflt_atom_cf,
+                                     self.atom_cf, mode=0o644, sudo=True)
                     dohup = True
                 if dohup:
                     self.signal('-HUP')
@@ -5158,6 +5148,7 @@ class Server(PBSService):
         ignore_attrs += [ATTR_status, ATTR_total, ATTR_count]
         ignore_attrs += [ATTR_rescassn, ATTR_FLicenses, ATTR_SvrHost]
         ignore_attrs += [ATTR_license_count, ATTR_version, ATTR_managers]
+        ignore_attrs += [ATTR_operators]
         ignore_attrs += [ATTR_pbs_license_info, ATTR_power_provisioning]
         unsetlist = []
         self.cleanup_jobs_and_reservations()
@@ -5414,9 +5405,9 @@ class Server(PBSService):
         Status PBS objects from the SQL database
 
         :param obj_type: The type of object to query, one of the
-                         * objects,\ Default: SERVER
+                         * objects, Default: SERVER
         :param attrib: Attributes to query, can a string, a list,
-                       a dictionary\ Default: None. All attributes
+                       a dictionary Default: None. All attributes
                        will be queried
         :type attrib: str or list or dictionary
         :param id: An optional identifier, the name of the object
@@ -5919,7 +5910,7 @@ class Server(PBSService):
 
         :param obj: The Job or Reservation instance to submit
         :param script: Path to a script to submit. Default: None
-                       as an executable\ /bin/sleep 100 is submitted
+                       as an executable /bin/sleep 100 is submitted
         :type script: str or None
         :param extend: Optional extension to the IFL call.
                        see pbs_ifl.h
@@ -8341,7 +8332,7 @@ class Server(PBSService):
             return self.expect(obj_type, attrib, id, op, attrop, attempt + 1,
                                max_attempts, interval, count, extend,
                                runas=runas, level=level, msg=" ".join(msg))
-
+        inp_op = op
         for k, v in attrib.items():
             varargs = None
             if isinstance(v, tuple):
@@ -8349,6 +8340,8 @@ class Server(PBSService):
                 if len(v) > 2:
                     varargs = v[2:]
                 v = v[1]
+            else:
+                op = inp_op
 
             for stat in statlist:
                 if k not in stat:
@@ -10866,6 +10859,9 @@ class Scheduler(PBSService):
         self.dflt_resource_group_file = os.path.join(self.pbs_conf['PBS_EXEC'],
                                                      'etc',
                                                      'pbs_resource_group')
+        self.dflt_dedicated_file = os.path.join(self.pbs_conf['PBS_EXEC'],
+                                                'etc',
+                                                'pbs_dedicated')
         self.setup_sched_priv(sched_priv)
 
         self.db_access = db_access
@@ -10890,6 +10886,8 @@ class Scheduler(PBSService):
         self.sched_config_file = os.path.join(sched_priv, 'sched_config')
         self.resource_group_file = os.path.join(sched_priv, 'resource_group')
         self.holidays_file = os.path.join(sched_priv, 'holidays')
+        self.set_dedicated_time_file(os.path.join(sched_priv,
+                                                  'dedicated_time'))
 
         if not os.path.exists(sched_priv):
             return
@@ -11432,13 +11430,13 @@ class Scheduler(PBSService):
         if apply:
             return self.apply_config()
 
-    def set_dedicated_time_file(self, file):
+    def set_dedicated_time_file(self, filename):
         """
         Set the path to a dedicated time
         """
         self.logger.info(self.logprefix + " setting dedicated time file to " +
-                         str(file))
-        self.dedicated_time_file = file
+                         str(filename))
+        self.dedicated_time_file = filename
 
     def revert_to_defaults(self):
         """
@@ -11470,6 +11468,12 @@ class Scheduler(PBSService):
             self.du.run_copy(self.hostname, self.dflt_sched_config_file,
                              self.sched_config_file, preserve_permission=False,
                              sudo=True)
+        if self.du.cmp(self.hostname, self.dflt_dedicated_file,
+                       self.dedicated_time_file, sudo=True):
+            self.du.run_copy(self.hostname, self.dflt_dedicated_file,
+                             self.dedicated_time_file,
+                             preserve_permission=False, sudo=True)
+
         self.signal('-HUP')
         # Revert fairshare usage
         cmd = [os.path.join(self.pbs_conf['PBS_EXEC'], 'sbin', 'pbsfs'), '-e']
@@ -11504,9 +11508,9 @@ class Scheduler(PBSService):
             self.du.run_copy(self.hostname, self.dflt_holidays_file,
                              self.holidays_file, mode=0o644, sudo=True)
             self.du.run_copy(self.hostname, self.dflt_sched_config_file,
-                             self.sched_config_file, mode=0o644,
-                             sudo=True)
-
+                             self.sched_config_file, mode=0o644, sudo=True)
+            self.du.run_copy(self.hostname, self.dflt_dedicated_file,
+                             self.dedicated_time_file, mode=0o644, sudo=True)
         if not os.path.exists(sched_logs_dir):
             self.du.mkdir(path=sched_logs_dir, sudo=True)
 
@@ -14212,14 +14216,28 @@ class Job(ResourceResv):
         return job_array_id[:idx + 1] + str(subjob_index) + \
             job_array_id[idx + 1:]
 
-    def create_eatcpu_job(self, duration=None):
+    def create_eatcpu_job(self, duration=None, mom=None):
         """
         Create a job that eats cpu indefinitely or for the given
         duration of time
         """
+        if self.du is None:
+            self.du = DshUtils()
         script_dir = os.path.dirname(os.path.dirname(__file__))
         script_path = os.path.join(script_dir, 'utils', 'jobs', 'eatcpu.py')
-        DshUtils().chmod(path=script_path, mode=0o755)
+        if not self.du.is_localhost(mom):
+            d = pwd.getpwnam(self.username).pw_dir
+            ret = self.du.run_copy(hosts=mom, src=script_path, dest=d)
+            if ret is None or ret['rc'] != 0:
+                raise AssertionError("Failed to copy file %s to %s"
+                                     % (script_path, mom))
+            script_path = os.path.join(d, "eatcpu.py")
+        pbs_conf = self.du.parse_pbs_config(mom)
+        shell_path = os.path.join(pbs_conf['PBS_EXEC'],
+                                  'bin', 'pbs_python')
+        a = {ATTR_S: shell_path}
+        self.set_attributes(a)
+        self.du.chmod(path=script_path, mode=0o755)
         self.set_execargs(script_path, duration)
 
 
@@ -14374,7 +14392,7 @@ class InteractiveJob(threading.Thread):
             self.job.interactive_handle = _p
             time.sleep(_st)
             expstr = "qsub: waiting for job "
-            expstr += "(?P<jobid>\d+.[0-9A-Za-z-.]+) to start"
+            expstr += r"(?P<jobid>\d+.[0-9A-Za-z-.]+) to start"
             _p.expect(expstr)
             if _p.match:
                 self.jobid = _p.match.group('jobid').decode()
