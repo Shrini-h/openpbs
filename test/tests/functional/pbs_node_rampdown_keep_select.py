@@ -38,6 +38,7 @@
 from tests.functional import *
 from os import name
 from collections import Counter
+from copy import deepcopy
 
 
 class n_conf:
@@ -190,6 +191,7 @@ class TestPbsNodeRampDownKeepSelect(TestFunctional):
         for (mom, conf) in zip(self.momArr, node_conf):
             if mom.has_vnode_defs():
                 mom.delete_vnode_defs()
+            start_time = int(time.time())
             self.server.create_vnodes(mom.shortname, conf.a, conf.vnode_ct,
                                       mom, delall=False,
                                       usenatvnode=conf.usenatvnode)
@@ -200,12 +202,23 @@ class TestPbsNodeRampDownKeepSelect(TestFunctional):
                 vn_ct -= 1
             elif vn_ct:
                 self.vnode_dict[mom.shortname]['res'] = None
+            vstat = deepcopy(conf.a)
+            vstat['state'] = 'free'
             for n in range(vn_ct):
                 vnid = mom.shortname + '[' + str(n) + ']'
+                self.server.expect(NODE, id=vnid, attrib=vstat)
                 self.vnode_dict[vnid] = {'mom': mom,
                                          'res': conf}
+            if not conf.usenatvnode:
+                if not vn_ct:
+                    nvstat = deepcopy(conf.a)
+                else:
+                    nvstat = {}
+                nvstat['state'] = 'free'
+                self.server.expect(NODE, id=mom.shortname, attrib=nvstat)
+            mom.log_match("copy hook-related file request received",
+                          starttime=start_time)
             self.mom_list.append(mom)
-        self.server.expect(NODE, {'state=free': len(self.vnode_dict)})
 
     def setUp(self):
 
@@ -535,9 +548,9 @@ class TestPbsNodeRampDownKeepSelect(TestFunctional):
         n1 = n_conf({'resources_available.ncpus': '1'})
         n2_a = n_conf({'resources_available.ncpus': '2'})
         n2_b = n_conf({'resources_available.ncpus': '2',
-                       'resources_available.'+bool_res: 'true'})
+                       'resources_available.'+bool_res: 'True'})
         n3_b = n_conf({'resources_available.ncpus': '3',
-                       'resources_available.'+bool_res: 'true'})
+                       'resources_available.'+bool_res: 'True'})
         n3_c = n_conf({'resources_available.ncpus': '3'})
 
         nc_list = [n1, n2_a, n2_b, n3_b, n3_c]
@@ -693,13 +706,13 @@ class TestPbsNodeRampDownKeepSelect(TestFunctional):
 
         n1 = n_conf({'resources_available.ncpus': '1'})
         n2_a = n_conf({'resources_available.ncpus': '2',
-                       'resources_available.'+size_res: '7k'})
+                       'resources_available.'+size_res: '7kb'})
         n2_b = n_conf({'resources_available.ncpus': '2',
-                       'resources_available.'+size_res: '9k'})
+                       'resources_available.'+size_res: '9kb'})
         n3_b = n_conf({'resources_available.ncpus': '3',
-                       'resources_available.'+size_res: '9k'})
+                       'resources_available.'+size_res: '9kb'})
         n3_c = n_conf({'resources_available.ncpus': '3',
-                       'resources_available.'+size_res: '10k'})
+                       'resources_available.'+size_res: '10kb'})
 
         nc_list = [n1, n2_a, n2_b, n3_b, n3_c]
         # 3. configure the cluster
@@ -882,24 +895,24 @@ class TestPbsNodeRampDownKeepSelect(TestFunctional):
         n2_a = n_conf({'resources_available.ncpus': '2',
                        'resources_available.'+str_res: model_a,
                        'resources_available.'+long_res: '7',
-                       'resources_available.'+size_res: '7k',
+                       'resources_available.'+size_res: '7kb',
                        'resources_available.'+float_res: '7.1'})
         n2_b = n_conf({'resources_available.ncpus': '2',
                        'resources_available.'+str_res: model_b,
-                       'resources_available.'+bool_res: 'true',
+                       'resources_available.'+bool_res: 'True',
                        'resources_available.'+long_res: '9',
-                       'resources_available.'+size_res: '9k',
+                       'resources_available.'+size_res: '9kb',
                        'resources_available.'+float_res: '9.1'})
         n3_b = n_conf({'resources_available.ncpus': '3',
                        'resources_available.'+str_res: model_b,
-                       'resources_available.'+bool_res: 'true',
+                       'resources_available.'+bool_res: 'True',
                        'resources_available.'+long_res: '9',
-                       'resources_available.'+size_res: '9k',
+                       'resources_available.'+size_res: '9kb',
                        'resources_available.'+float_res: '9.1'})
         n3_c = n_conf({'resources_available.ncpus': '3',
                        'resources_available.'+str_res: model_c,
                        'resources_available.'+long_res: '10',
-                       'resources_available.'+size_res: '10k',
+                       'resources_available.'+size_res: '10kb',
                        'resources_available.'+float_res: '10.1'})
 
         nc_list = [n1, n2_a, n2_b, n3_b, n3_c]
