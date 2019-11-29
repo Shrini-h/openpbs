@@ -3186,6 +3186,7 @@ map_need_to_have_resources(char *buf, size_t buf_sz, char *have_resc,
 static int
 add_to_vnl(vnl_t **vnlp, char *noden, char *keyw, char *keyval)
 {
+#ifdef PBS_MOM
 	int 		rc;
 	char 		buf[LOG_BUF_SIZE];
 	char 		buf_val[LOG_BUF_SIZE];
@@ -3238,7 +3239,7 @@ add_to_vnl(vnl_t **vnlp, char *noden, char *keyw, char *keyval)
 		free(msgbuf);
 		return (1);
 	}
-
+#endif
 	return (0);
 }
 
@@ -4414,7 +4415,7 @@ pbs_release_nodes_given_select(relnodes_input_t *r_input, relnodes_input_select_
 				rc = 1;
 				goto release_nodes_exit;
 			}
-
+			resc_limit_free(&need);
 		}
 
 		/* do next section of select */
@@ -4454,6 +4455,8 @@ release_nodes_exit:
 #ifndef PBS_MOM
 	free(sched_select);
 	free(res_in_exec_vnode);
+	if (tmp_chunk_spec)
+		free(tmp_chunk_spec);
 #endif
 	free(chunk_buf);
 	resc_limit_list_free(&resc_limit_list);

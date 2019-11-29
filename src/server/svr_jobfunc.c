@@ -6105,6 +6105,7 @@ recreate_exec_vnode(job *pjob, char *vnodelist, char *keep_select, char *err_msg
 
 		rc = pbs_release_nodes_given_select(&r_input, &r_input_keep_select, err_msg, err_msg_sz);
 		free(r_input_keep_select.select_str);
+		reliable_job_node_free(&succeeded_mom_list);
 	}
 
 	if (rc != 0) {

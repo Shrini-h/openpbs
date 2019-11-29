@@ -271,7 +271,7 @@ req_relnodesjob(struct batch_request *preq)
 {
 	int             jt;		/* job type */
 	job		*pjob;
-	int		rc;
+	int		rc = PBSE_NONE;
 	char		*jid;
 	int		i, offset;
 	char		*nodeslist = NULL;
