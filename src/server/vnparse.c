@@ -2536,10 +2536,10 @@ resc_limit_list_cmp_name(resc_limit_t *left, resc_limit_t *right)
 		return -1;
 
 	for (pres_l = (resource *)GET_NEXT(left->rl_oth_res),
-			pres_r = (resource *)GET_NEXT(right->rl_oth_res);
-			pres_l && pres_r;
-			pres_l = (resource *)GET_NEXT(pres_l->rs_link),
-			pres_r = (resource *)GET_NEXT(pres_r->rs_link)) {
+		pres_r = (resource *)GET_NEXT(right->rl_oth_res);
+		pres_l && pres_r;
+		pres_l = (resource *)GET_NEXT(pres_l->rs_link),
+		pres_r = (resource *)GET_NEXT(pres_r->rs_link)) {
 		int cmp_res;
 		if ((cmp_res = strcasecmp(pres_l->rs_defin->rs_name, pres_r->rs_defin->rs_name)))
 			return cmp_res;
@@ -2597,10 +2597,10 @@ resc_limit_list_cmp_val(resc_limit_t *left, resc_limit_t *right)
 		return -1;
 
 	for (pres_l = (resource *)GET_NEXT(left->rl_oth_res),
-			pres_r = (resource *)GET_NEXT(right->rl_oth_res);
-			pres_l && pres_r;
-			pres_l = (resource *)GET_NEXT(pres_l->rs_link),
-			pres_r = (resource *)GET_NEXT(pres_r->rs_link)) {
+		pres_r = (resource *)GET_NEXT(right->rl_oth_res);
+		pres_l && pres_r;
+		pres_l = (resource *)GET_NEXT(pres_l->rs_link),
+		pres_r = (resource *)GET_NEXT(pres_r->rs_link)) {
 		int cmp_res;
 		if (pres_l->rs_defin->rs_type == ATR_TYPE_BOOL)
 			cmp_res = pres_l->rs_value.at_val.at_long - pres_r->rs_value.at_val.at_long;
@@ -2868,7 +2868,7 @@ resc_limit_free_res_list(pbs_list_head *pl_head)
 	resource *next;
 	resource *pr;
 
-	if (pl_head == NULL)
+	if ((pl_head == NULL) || (pl_head->ll_next == NULL))
 		return;
 
 	pr = (resource *)GET_NEXT(*pl_head);
@@ -3874,9 +3874,9 @@ pbs_release_nodes_given_select(relnodes_input_t *r_input, relnodes_input_select_
 	     chunk2 = parse_plus_spec_r(exec_host2,&last2, &hasprn2);
 	     (chunk != NULL) && (chunk1 != NULL)
 #ifndef PBS_MOM
-			&& (chunkschsel != NULL)
+		&& (chunkschsel != NULL)
 #endif
-			&& (chunk2 != NULL);
+		&& (chunk2 != NULL);
 	     chunk = parse_plus_spec_r(last, &last, &hasprn) ) {
 
 		paren += hasprn;
