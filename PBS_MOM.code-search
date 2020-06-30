@@ -1,0 +1,45 @@
+# Query: #if.*PBS_MOM
+# Flags: WordMatch RegExp
+
+166 results - 26 files
+
+src\resmom\mock_run.c:
+  264: #ifdef PBS_MOM DEADC
+
+src\resmom\vnode_storage.c:
+  40: #ifdef  PBS_MOM DEADC
+
+src\server\issue_request.c:
+  444: #ifndef PBS_MOM DEADC
+
+src\server\job_recov_db.c:
+  109: #ifndef PBS_MOM DEADC
+  134: #ifndef PBS_MOM DEADC
+
+src\server\job_recov.c:
+  256: #ifndef PBS_MOM DEADC
+  464: #ifndef PBS_MOM DEADC
+  500: #if defined(PBS_MOM) && defined(WIN32) DEADC
+  595: #ifndef PBS_MOM	/* MOM knows not of resc_resv structs */ DEADC
+  808: #ifndef PBS_MOM DEADC
+  827: #ifndef PBS_MOM		/*MOM doesn't know about resource reservations*/ DEADC
+  936: #ifndef PBS_MOM		/*MOM doesn't know about resource reservations*/ DEADC
+  949: #if defined(PBS_MOM) && defined(WIN32) DEADC
+
+src\server\queue_func.c:
+  93: #ifndef PBS_MOM DEADC
+
+src\server\queue_recov_db.c:
+  80: #ifndef PBS_MOM DEADC
+
+src\server\req_manager.c:
+  178: #ifndef PBS_MOM DEADC
+
+src\server\svr_func.c:
+  6908: #ifndef PBS_MOM DEADC
+
+src\server\svr_jobfunc.c:
+  191: #ifndef PBS_MOM DEADC
+
+src\server\svr_recov_db.c:
+  99: #ifndef PBS_MOM DEADC

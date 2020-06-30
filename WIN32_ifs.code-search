@@ -1,0 +1,1073 @@
+# Query: #if.*WIN32
+# Flags: RegExp
+
+823 results - 123 files
+
+src\cmds\pbs_attach.c:
+   63: #ifdef WIN32 HEADER_FILE
+   85: #ifdef WIN32 DIFF_FEAT_USAGE
+   95: #ifdef WIN32 DIFF_IMP
+  247: #ifdef WIN32 DIFF_FEAT
+  264: #ifdef WIN32 DIFF_FEAT,SOCKOP
+  293: #ifdef WIN32 DIFF_FEAT
+  343: #ifdef WIN32 /* Windows - attach */ DIFF_IMP
+
+src\cmds\pbs_ralter.c:
+  244: #ifdef WIN32 SOCKOP
+
+src\cmds\pbs_rdel.c:
+  84: #ifdef WIN32 SOCKOP
+
+src\cmds\pbs_release_nodes.c:
+  86: #ifdef WIN32 SOCKOP
+
+src\cmds\pbs_rstat.c:
+  245: #ifdef WIN32 SOCKOP
+
+src\cmds\pbs_rsub.c:
+  103: #ifdef WIN32 DEADC
+  424: #ifdef WIN32 PATHOP
+  734: #ifdef WIN32 SOCKOP
+
+src\cmds\pbs_tmrsh.c:
+  208: #ifdef WIN32 SOCKOP
+
+src\cmds\pbsdsh.c:
+   61: #ifndef WIN32 SIGHAND
+  130: #ifdef WIN32 SIGHAND
+  204: #ifndef WIN32 SIGHAND
+  214: #ifdef WIN32 SOCKOP
+  280: #ifdef WIN32 SIGHAND
+  371: #ifndef WIN32 SIGHAND
+  397: #ifdef WIN32 WINSPEC
+
+src\cmds\pbsnodes.c:
+  925: #ifdef WIN32 SOCKOP
+
+src\cmds\qalter.c:
+  189: #ifdef WIN32 DEADC
+  202: #ifdef WIN32 SOCKOP
+  305: #ifdef WIN32 PATHOP
+
+src\cmds\qdel.c:
+  105: #ifdef WIN32 SOCKOP
+
+src\cmds\qdisable.c:
+  95: #ifdef WIN32 SOCKOP
+
+src\cmds\qenable.c:
+  94: #ifdef WIN32 SOCKOP
+
+src\cmds\qhold.c:
+  136: #ifdef WIN32 SOCKOP
+
+src\cmds\qmgr.c:
+   110: #ifndef WIN32 HEADER_FILE, DIFF_IMP
+   128: #ifndef WIN32 DIFF_IMP
+   242: #ifdef WIN32 PATHOP
+   255: #ifndef WIN32 DIFF_IMP
+   731: #ifdef WIN32 SECFILE
+  1090: #ifdef WIN32 USERLOGIN
+  1126: #ifndef WIN32 TMPFILE
+  1134: #ifdef WIN32 SOCKOP
+  1222: #ifdef WIN32 TMPFILE
+  2529: #ifdef WIN32 SECFILE
+  2808: #ifdef WIN32 STATOP
+  2838: #ifdef WIN32 STATOP
+  3126: #ifndef WIN32 DIFF_IMP
+
+src\cmds\qmove.c:
+  78: #ifdef WIN32 SOCKOP
+
+src\cmds\qmsg.c:
+  84: #ifdef WIN32 SOCKOP
+
+src\cmds\qorder.c:
+  76: #ifdef WIN32 SOCKOP
+
+src\cmds\qrerun.c:
+  81: #ifdef WIN32 SOCKOP
+
+src\cmds\qrls.c:
+  84: #ifdef WIN32 SOCKOP
+
+src\cmds\qrun.c:
+  98: #ifdef WIN32 SOCKOP
+
+src\cmds\qselect.c:
+  419: #ifdef WIN32 SOCKOP
+
+src\cmds\qsig.c:
+  83: #ifdef WIN32 SOCKOP
+
+src\cmds\qstart.c:
+  94: #ifdef WIN32 SOCKOP
+
+src\cmds\qstat.c:
+  2387: #ifdef WIN32 SOCKOP
+
+src\cmds\qstop.c:
+  93: #ifdef WIN32 SOCKOP
+
+src\cmds\qsub.c:
+    90: #ifndef WIN32 HEADER_FILE
+   112: #ifdef WIN32 HEADER_FILE, DIFF_IMP
+   117: #ifdef WIN32 DIFF_IMP
+   139: #if !defined(sgi) && !defined(linux) && !defined(WIN32) HEADER_FILE
+   173: #ifdef WIN32 DIFF_FEAT
+   201: #ifdef WIN32 /* Windows */ SYNCIPC
+   223: #ifdef WIN32 DIFF_IMP, PIPEOP
+   246: #ifndef WIN32 DIFF_FEAT
+   282: #ifdef WIN32 DIFF_FEAT
+   324: #ifdef WIN32 DIFF_FEAT
+   355: #ifndef WIN32 DIFF_FEAT
+   677: #ifndef WIN32 DIFF_FEAT_X11
+   820: #ifdef WIN32 SYNCIPC
+   898: #ifdef WIN32 DIFF_FEAT_USAGE
+   978: #ifndef WIN32 DIFF_FEAT_X11
+  1418: #ifdef WIN32 SOCKOP
+  1460: #ifndef WIN32 /* Unix */ DIFF_FEAT_X11, DIFF_FEAT_GUI
+  1489: #ifndef WIN32 SIGHAND
+  2053: #ifdef WIN32 SIGHAND
+  2129: #ifdef WIN32 SIGHAND
+  2178: #ifndef WIN32 SIGHAND
+  2199: #ifdef WIN32 SOCKOP
+  2224: #ifdef WIN32 SIGHAND
+  2319: #ifdef WIN32 DEADC
+  2327: #ifdef WIN32 DIFF_FEAT_USAGE
+  2353: #if defined(linux) || defined(WIN32) DIFF_IMP
+  2600: #ifdef WIN32 PATHOP
+  2625: #ifdef WIN32 PATHOP
+  2764: #if !defined(PBS_NO_POSIX_VIOLATION) && !defined(WIN32) DIFF_FEAT_X11
+  2772: #ifdef WIN32 DIFF_FEAT_GUI
+  2796: #ifdef WIN32 DIFF_FEAT_GUI
+  3104: #ifndef WIN32 TMPFILE
+  3114: #ifdef WIN32 TMPFILE
+  3178: #ifdef WIN32 TMPFILE
+  3247: #ifdef WIN32 DIFF_IMP
+  3326: #ifdef WIN32 DIFF_IMP
+  3383: #ifdef WIN32 PATHOP
+  3407: #ifdef WIN32 PATHOP
+  3416: #ifdef WIN32 PATHOP
+  3425: #ifdef WIN32 PATHOP
+  3487: #ifdef WIN32 PATHOP_UNC
+  3493: #ifdef WIN32 PATHOP
+  3504: #ifdef WIN32 /* Windows */ DIFF_IMP
+  3590: #ifdef WIN32 PATHOP
+  3691: #ifdef WIN32 PATHOP
+  3708: #ifndef WIN32 DIFF_FEAT_X11
+  3721: #ifdef WIN32 PATHOP
+  3794: #ifdef WIN32 LOGFORMAT, DEBUG
+  3842: #ifdef WIN32 SOCKOP_READ
+  3899: #ifdef WIN32 SOCKOP_WRITE
+  4464: #ifndef WIN32 DIFF_FEAT_X11
+  4548: #ifdef WIN32 DIFF_FEAT_GUI
+  4692: #ifdef WIN32 PATHOP
+  4804: #ifdef WIN32 DIFF_IMP
+  5619: #ifndef WIN32 DIFF_IMP_FORK
+  5640: #ifdef WIN32 /* Windows */ DIFF_IMP_FORK
+  5666: #ifdef WIN32 DIFF_IMP_FORK
+  5737: #ifdef WIN32 PATHOP
+  5787: #ifdef WIN32 DIFF_IMP_FORK
+
+src\cmds\qterm.c:
+  116: #ifdef WIN32 SOCKOP_INIT
+
+src\iff\iff2.c:
+  157: #ifdef WIN32 SOCKOP_INIT
+
+src\include\hook.h:
+  389: #ifdef WIN32 SIGHAND_ALARM
+
+src\include\job.h:
+  574: #ifdef WIN32 DIFF_IMP
+  604: #ifdef WIN32 WINSPEC_HANDLE, USERINFO
+  769: #ifdef WIN32 WINSPEC_HANDLE
+
+src\include\libauth.h:
+  48: #ifdef WIN32 DIFF_IMP_DLL
+
+src\include\log.h:
+  129: #ifdef WIN32 SECFILE
+
+src\include\mom_func.h:
+  186: #ifdef WIN32 DIFF_IMP
+  273: #ifdef WIN32 DIFF_IMP
+  316: #ifdef WIN32 DIFF_IMP_staging
+  351: #ifdef WIN32 DIFF_IMP_staging, DIFF_IMP_env
+
+src\include\pbs_internal.h:
+  165: #ifdef WIN32 SHELL_PARSE
+  250: #ifdef WIN32 DIFF_FEAT_GUI
+  314: #ifdef WIN32 DIFF_FEAT_GUI
+  393: #ifdef WIN32 SOCKOP_CLOSE
+  401: #ifdef WIN32 DEADC  MSVS 2017 will support stdbool.h
+
+src\include\pbs_python.h:
+  48: #ifndef WIN32 HEADER_FILE
+  64: #ifdef WIN32 PATHOP
+
+src\include\pbs_version.h.in:
+  54: #ifdef WIN32 MINOR
+
+src\include\provision.h:
+  61: #ifdef	WIN32 WINSPEC_HANDLE
+
+src\include\server_limits.h:
+  45: #ifdef WIN32 HEADER_FILE
+
+src\include\tpp.h:
+  237: #ifndef WIN32 EVMUXPOLL
+
+src\lib\Libattr\attr_fn_acl.c:
+   50: #ifndef WIN32 HEADER_FILE
+  696: #ifdef WIN32 DIFF_IMP
+
+src\lib\Libattr\attr_fn_size.c:
+  440: #ifdef WIN32 PRINTFORMAT
+
+src\lib\Libauth\munge\munge_supp.c:
+  41: #ifndef WIN32 HEADER_FILE
+
+src\lib\Libcmds\cvtdate.c:
+   89: #ifdef WIN32 DATETIME
+  113: #ifdef WIN32 DATETIME
+
+src\lib\Libcmds\get_dataservice_usr.c:
+  79: #ifdef WIN32 DEADC
+
+src\lib\Libcmds\parse_at.c:
+   50: #ifdef WIN32	/* we're including the space character under windows */ DIFF_PARSING
+  162: #ifdef WIN32 PATHOP
+
+src\lib\Libcmds\parse_stage.c:
+   94: #ifdef WIN32 DIFF_PARSING, PATHOP_UNC
+  126: #ifdef WIN32 DIFF_PARSING, PATHOP_UNC
+  229: #ifdef WIN32 DIFF_PARSING, PATHOP_UNC
+
+src\lib\Libcmds\prepare_path.c:
+   81: #ifdef WIN32 MINOR
+  147: #ifdef WIN32 PATHOP
+  157: #ifdef WIN32 PATHOP
+  199: #ifdef WIN32 PATHOP_UNC
+  239: #ifdef WIN32 PATHOP
+  276: #ifdef WIN32 PATHOP_UNC
+  293: #ifdef WIN32 PATHOP_UNC
+
+src\lib\Libdis\dis_helpers.c:
+  44: #ifdef WIN32 HEADER_FILE, SOCKOP
+
+src\lib\Libifl\auth.c:
+   45: #ifndef WIN32 HEADER_FILE
+   72: #ifndef WIN32 DIFF_IMP_DLL
+   79: #ifndef WIN32 DIFF_IMP_DLL
+  111: #ifndef WIN32 DIFF_IMP_DLL
+  124: #ifndef WIN32 DIFF_IMP_DLL
+  159: #ifndef WIN32 DIFF_IMP_DLL
+  219: #ifndef WIN32 DIFF_IMP_DLL
+  472: #ifdef WIN32 DIFF_IMP_POPEN
+  490: #ifdef WIN32 DIFF_IMP_POPEN
+
+src\lib\Libifl\conn_table.c:
+  53: #ifdef WIN32 SOCKOP
+
+src\lib\Libifl\get_localaddr.c:
+  40: #ifdef WIN32 HEADER_FILE
+
+src\lib\Libifl\int_submit.c:
+   49: #ifndef WIN32 HEADER_FILE
+  123: #ifdef WIN32 PRINTFORMAT
+
+src\lib\Libifl\pbs_ifl_wrap.c:
+  143: #if defined(__GNUC__) && defined(_WIN32) && !defined(SWIG_PYTHON_NO_HYPOT_WORKAROUND) IGNORE
+
+src\lib\Libifl\pbs_loadconf.c:
+    57: #ifdef WIN32 HEADER_FILE
+   129: #ifdef WIN32 DIFF_FEAT_GUI
+   291: #ifndef WIN32 DIFF_IMP
+   323: #ifdef WIN32 DIFF_IMP
+   573: #ifdef WIN32 DIFF_FEAT_GUI
+   818: #ifdef WIN32 DIFF_FEAT_GUI
+   891: #ifdef WIN32 PATHOP
+   904: #ifdef WIN32 PATHOP
+   915: #ifdef WIN32 PATHOP
+   929: #ifdef WIN32 PATHOP
+  1094: #ifdef WIN32 TMPDIR
+  1103: #ifdef WIN32 TMPDIR
+  1140: #ifdef WIN32 TMPDIR
+  1160: #ifdef WIN32 PATHOP
+
+src\lib\Libifl\pbsD_connect.c:
+   64: #ifndef WIN32 HEADER_FILE
+  187: #ifdef WIN32 MINOR
+  284: #ifdef WIN32 DEADC
+  289: #ifndef WIN32 DECLARATION
+  320: #ifdef WIN32 DIFF_IMP, SOCKOP
+  358: #ifdef WIN32 WINSPEC
+  401: #ifndef WIN32 DIFF_IMP
+  576: #ifdef WIN32 SOCKOP_READ
+  660: #ifdef WIN32 DEADC, SOCKOP, DECLARATION
+  666: #ifndef WIN32 DECLARATION, SYNCIOCTLFCNTL
+  688: #ifdef WIN32 WINSPEC
+  698: #ifdef WIN32 SOCKOP, SYNCIOCTLFCNTL
+  753: #ifdef WIN32 SOCKOP_CONNECT
+  776: #ifdef WIN32 SOCKOP_CONNECT
+  800: #ifdef WIN32 SOCKOP, SYNCIOCTLFCNTL
+
+src\lib\Libifl\rm.c:
+  415: #ifdef WIN32 MINOR, DIFF_IMP
+  467: #ifdef WIN32 MINOR, DIFF_IMP
+
+src\lib\Libifl\tcp_dis.c:
+   43: #ifdef WIN32 DEADC ?
+  112: #ifdef WIN32 EVMUXPOLL, DECLARATION
+  120: #ifdef WIN32 EVMUXPOLL
+  137: #ifdef WIN32 EVMUXPOLL
+  147: #ifdef WIN32 EVMUXPOLL
+  156: #ifdef WIN32 SOCKOP_READ
+  166: #ifdef WIN32 SOCKOP_READ
+  211: #ifdef WIN32 SOCKOP_WRITE
+
+src\lib\Libifl\tm.c:
+    57: #ifdef WIN32 HEADER_FILE
+   243: #ifdef WIN32 SOCKOP_CLOSE
+   503: #ifdef WIN32 SOCKOP_CONNECT
+   539: #ifdef WIN32 SOCKOP_CLOSE
+   595: #ifdef WIN32 SOCKOP_CLOSE
+   707: #ifdef WIN32 DECLARATION, USERINFO
+   750: #ifdef WIN32 USERINFO
+  1438: #ifdef WIN32 SOCKOP_CLOSE
+  1601: #ifdef WIN32 SOCKOP_CLOSE
+
+src\lib\Libifl\xml_encode_decode.c:
+  202: #ifdef WIN32 DECLARATION, SHELL_PARSE
+  206: #ifdef	WIN32 SHELL_PARSE
+  256: #ifdef	WIN32 SHELL_PARSE
+
+src\lib\Liblog\chk_file_sec.c:
+   64: #ifdef WIN32 STATOP, SECFILE
+  245: #ifdef WIN32 STATOP, SECFILE, PATHOP
+  306: #ifdef WIN32 STATOP
+  320: #ifdef WIN32 DIFF_IMP, MINOR
+  370: #ifdef WIN32 PATHOP, STATOP, TMPFILE
+  431: #ifdef WIN32 STATOP, TMPFILE
+  445: #ifdef WIN32 DIFF_IMP, MINOR
+
+src\lib\Liblog\pbs_log.c:
+   164: #ifdef WIN32 DATETIME
+   252: #ifndef WIN32 DECLARATION, DATETIME
+   260: #ifdef WIN32 DATETIME, PATHOP, PRINTFORMAT
+   352: #ifndef WIN32 DIFF_IMP_FORK
+   411: #ifndef WIN32 DIFF_IMP_FORK
+   598: #ifdef WIN32 PATHOP
+   609: #ifdef WIN32 FILEOP_OPEN
+   621: #ifdef WIN32 SECFILE
+   637: #ifdef WIN32 DIFF_IMP, MINOR
+   726: #ifdef WIN32 LOGFORMAT
+   845: #ifdef WIN32 LOGFORMAT
+   954: #ifndef WIN32 DECLARATION, DATETIME, SIGHAND
+   989: #ifdef WIN32 DATETIME
+  1054: #ifndef WIN32 SIGHAND
+
+src\lib\Liblog\pbs_messages.c:
+  203: #ifdef WIN32 DIFF_FEAT, LOGFORMAT
+
+src\lib\Liblog\setup_env.c:
+   48: #ifdef WIN32 HEADER_FILE
+  119: #ifdef WIN32 DEADC
+  151: #ifdef WIN32 DIFF_IMP
+
+src\lib\Libnet\hnls.c:
+  176: #ifdef WIN32 DECLARATION, SOCKOP_GETHOSTN
+  187: #ifdef WIN32 SOCKOP_GETHOSTN
+  195: #ifdef WIN32 SOCKOP_GETHOSTN
+  207: #ifdef WIN32 SOCKOP_GETHOSTN
+  215: #ifdef WIN32 SOCKOP_GETHOSTN
+  229: #ifdef WIN32 DIFF_IMP
+
+src\lib\Libnet\net_client.c:
+   51: #ifndef WIN32 HEADER_FILE
+   65: #ifdef WIN32 HEADER_FILE
+   75: #ifdef WIN32 DEADC
+  116: #if !defined(WIN32) DECLARATION, SOCKOP_GETHOSTN
+  142: #if defined(WIN32) SOCKOP_GETHOSTN
+  156: #if defined(WIN32) SOCKOP_GETHOSTN
+  239: #ifdef WIN32 DECLARATION, SYNCIOCTLFCNTL, SOCKOP, DEADC, SOCKOP_CONNECT, EVMUXPOLL
+  308: #ifdef WIN32 SOCKOP_CLOSE
+  322: #ifdef WIN32 SOCKOP_CLOSE
+  347: #ifdef WIN32 SOCKOP, SYNCIOCTLFCNTL, SOCKOP_CLOSE
+  368: #ifdef WIN32 SOCKOP_CONNECT
+  381: #ifdef WIN32 SOCKOP_CONNECT
+  389: #ifdef WIN32 SOCKOP_CLOSE
+  396: #ifdef WIN32 EVMUXPOLL, SOCKOP_CLOSE
+  452: #ifdef WIN32 SOCKOP_CLOSE
+  462: #ifdef WIN32 SYNCIOCTLFCNTL, SOCKOP_CLOSE
+  482: #ifdef WIN32 SOCKOP_CLOSE
+
+src\lib\Libnet\net_server.c:
+    60: #ifndef WIN32 HEADER_FILE
+   269: #ifdef WIN32 DECLARATION, SOCKOP
+   279: #ifdef WIN32 SOCKOP
+   289: #ifdef WIN32 SOCKOP
+   303: #ifdef WIN32 SOCKOP_CLOSE
+   362: #ifdef WIN32 SOCKOP_CLOSE
+   375: #ifdef WIN32 SOCKOP_CLOSE
+   564: #ifndef WIN32 DECLARATION, SIGHAND, EVMUXPOLL
+   589: #ifndef WIN32 SIGHAND, EVMUXPOLL
+   613: #ifndef WIN32 SIGHAND
+   644: #ifndef WIN32 DIFF_IMP, MINOR
+   684: #ifdef WIN32 SOCKOP_ACCEPT
+   893: #ifdef WIN32 SOCKOP
+  1074: #if !defined(WIN32) DECLARATION, SOCKOP_GETHOSTN
+  1087: #if defined(WIN32) SOCKOP_GETHOSTN
+  1134: #ifdef WIN32 DECLARATION, SOCKOP, EVMUXPOLL
+  1163: #ifdef WIN32 SOCKOP, EVMUXPOLL, SOCKOP_CLOSE
+  1202: #ifdef WIN32 SOCKOP_CLOSE
+
+src\lib\Libpython\common_python_utils.c:
+  261: #if !defined(WIN32) WINSPEC_BUG
+
+src\lib\Libpython\pbs_python_external.c:
+  803: #if !defined(WIN32) WINSPEC_BUG
+
+src\lib\Libpython\shared_python_utils.c:
+   48: #ifdef WIN32 WINSPEC_BUG, PATHOP
+  103: #ifndef WIN32 PATHOP, PRINTFORMAT
+  153: #ifdef WIN32 WINSPEC_BUG, PATHOP
+
+src\lib\Libsite\site_check_u.c:
+  131: #ifdef WIN32 DIFF_IMP
+
+src\lib\Libsite\site_map_usr.c:
+  59: #ifndef	WIN32 HEADER_FILE
+
+src\lib\Libtpp\tpp_client.c:
+   92: #ifndef WIN32 HEADER_FILE
+  867: #ifndef WIN32 DIFF_IMP_FORK
+
+src\lib\Libtpp\tpp_em.c:
+  103: #ifndef WIN32 EVMUXPOLL
+  788: #ifndef WIN32 EVMUXPOLL
+
+src\lib\Libtpp\tpp_internal.h:
+   58: #ifndef WIN32 SOCKOP, PIPEOP
+  528: #ifdef WIN32 WINSPEC
+
+src\lib\Libtpp\tpp_platform.c:
+   61: #ifndef WIN32 HEADER_FILE
+   68: #ifdef WIN32 PIPEOP, SOCKOP
+  861: #ifdef WIN32 WINSPEC_HANDLE
+  888: #ifndef WIN32 WINSPEC_HANDLE
+
+src\lib\Libtpp\tpp_transport.c:
+  1589: #ifndef WIN32 DECLARATION, SIGHAND
+  1607: #ifndef WIN32 SIGHAND
+
+src\lib\Libtpp\tpp_util.c:
+    66: #ifndef WIN32 HEADER_FILE
+   788: #ifndef WIN32 SYNCIOCTLFCNTL
+   832: #ifndef WIN32 SOCKOP
+   888: #ifndef WIN32 DIFF_IMP_PROC
+   917: #ifndef WIN32 DIFF_IMP_PROC
+  2197: #ifdef WIN32 DECLARATION, SOCKOP
+  2218: #ifdef WIN32 SOCKOP
+  2284: #ifdef WIN32 SOCKOP_GETHOSTN
+
+src\lib\Libutil\entlim.c:
+  58: #ifdef WIN32 HEADER_FILE
+
+src\lib\Libutil\hook.c:
+    43: #ifndef WIN32 HEADER_FILE
+  2626: #ifdef WIN32 FILEOP, SECFILE
+  2700: #ifdef WIN32 SECFILE
+  2719: #ifdef WIN32 SECFILE
+  2738: #ifdef WIN32 SECFILE
+  2793: #ifdef WIN32 SECFILE
+  2849: #ifdef WIN32 FILEOP, SECFILE
+  3197: #ifdef WIN32 SECFILE
+  3325: #ifdef WIN32 SECFILE
+  3679: #ifdef WIN32 SECFILE
+  3823: #ifdef WIN32 SECFILE
+  3856: #ifdef WIN32 SIGHAND_ALARM
+  3908: #ifndef WIN32 SIGHAND_ALARM
+
+src\lib\Libutil\misc_utils.c:
+    86: #ifndef WIN32 HEADER_FILE
+   447: #ifdef WIN32  DIFF_IMP
+   620: #ifdef WIN32 DECLARATION, STATOP
+   630: #ifdef WIN32 STATOP, FILEOP_LOCK
+   760: #ifdef WIN32 PATHOP, DIFF_PARSING
+   933: #ifdef WIN32 STATOP
+  1346: #ifdef WIN32 DEADC
+  1414: #ifndef WIN32 NIXSPEC
+  1458: #ifndef WIN32 DIFF_IMP
+  1541: #ifdef WIN32 DIFF_IMP
+  1803: #ifdef WIN32 PATHOP, USERINFO
+  1832: #ifdef WIN32 DECLARATION, STATOP
+  1839: #ifdef WIN32 PATHOP, STATOP
+  2026: #ifdef WIN32 WINSPEC, FILEOP
+  2099: #ifdef WIN32 DECLARATION, WINSPEC, FILEOP
+  2121: #ifdef WIN32 WINSPEC, FILEOP
+  2156: #ifdef WIN32 WINSPEC, FILEOP
+
+src\lib\Libwin\passwd.c:
+    64: #ifndef SECURITY_WIN32
+  5425: #if (_WIN32_WINNT < 0x0501)
+  5563: #if (_WIN32_WINNT < 0x0501)
+
+src\lib\Libwin\rcmd.c:
+   63: #ifdef WIN32
+  109: #ifdef WIN32
+  114: #ifdef WIN32
+  123: #ifdef WIN32
+  190: #ifdef WIN32
+  200: #ifdef WIN32
+  223: #ifdef WIN32
+  240: #ifdef WIN32
+  255: #ifdef WIN32
+  269: #ifdef WIN32
+  288: #ifdef WIN32
+  298: #ifdef WIN32
+  309: #ifdef WIN32
+  327: #ifdef WIN32
+  334: #ifdef WIN32
+  405: #ifdef WIN32
+  415: #ifdef WIN32
+  438: #ifdef WIN32
+  455: #ifdef WIN32
+  470: #ifdef WIN32
+  484: #ifdef WIN32
+  503: #ifdef WIN32
+  534: #ifdef WIN32
+  545: #ifdef WIN32
+  563: #ifdef WIN32
+  570: #ifdef WIN32
+
+src\mom_rcp\pathnames.h:
+  74: #ifdef WIN32 DIFF_IMP
+
+src\mom_rcp\pbs_stat.h:
+  49: #ifdef WIN32 DECLARATION, DIFF_IMP
+
+src\mom_rcp\rcp.c:
+   147: #ifdef WIN32 DECLARATION, DATETIME
+   198: #ifdef WIN32 DECLARATION, FILEOP_READ
+   257: #ifdef WIN32 FILEOP_READ
+   288: #ifdef WIN32 FILEOP_READ
+   315: #ifdef WIN32 SOCKOP_INIT
+   353: #ifndef WIN32 NIXSPEC_SETUID
+   362: #ifndef WIN32 NIXSPEC_SETUID
+   392: #ifndef WIN32 SIGHAND
+   396: #ifdef WIN32 PATHOP_UNC
+   487: #ifdef WIN32 PRINTFORMAT
+   515: #ifdef WIN32 DIFF_IMP
+   540: #ifndef WIN32 NIXSPEC_SETUID
+   578: #ifdef WIN32 PRINTFORMAT
+   624: #ifdef WIN32 DIFF_IMP
+   640: #ifdef WIN32 SOCKOP_CLOSE, NIXSPEC_SETUID
+   691: #ifdef WIN32 STATOP
+   731: #ifdef WIN32 SOCKOP_WRITE
+   740: #ifdef WIN32 DIFF_IMP, FILEOP
+   746: #ifdef WIN32 PRINTFORMAT
+   755: #ifdef WIN32 SOCKOP_WRITE
+   780: #ifdef WIN32 SOCKOP_WRITE
+   786: #ifdef WIN32 SOCKOP_WRITE
+   821: #ifdef WIN32 SOCKOP_WRITE
+   854: #ifdef WIN32 PATHOP
+   869: #ifdef WIN32 SOCKOP_WRITE
+   882: #ifdef WIN32 SOCKOP_WRITE
+   893: #ifndef WIN32 FILEOP_DIR
+   914: #ifdef WIN32 SOCKOP_WRITE
+   987: #ifdef WIN32 SOCKOP_WRITE
+   997: #ifdef WIN32 SOCKOP_READ
+  1006: #ifdef WIN32 SOCKOP_READ
+  1026: #ifdef WIN32 SOCKOP_WRITE
+  1055: #ifdef WIN32 SOCKOP_WRITE
+  1118: #ifdef WIN32 FILEOP_DIR, PATHOP_UNC
+  1130: #ifdef WIN32 DATETIME
+  1148: #ifdef WIN32 FILEOP_OPEN
+  1159: #ifdef WIN32 SOCKOP_WRITE
+  1178: #ifdef WIN32 SOCKOP_READ
+  1211: #ifdef WIN32 DIFF_IMP, FILEOP_CHMOD
+  1266: #ifdef WIN32 DATETIME
+  1285: #ifdef WIN32 SOCKOP_WRITE
+  1384: #ifdef WIN32 SOCKOP_READ
+  1402: #ifdef WIN32 SOCKOP_READ
+
+src\mom_rcp\util.c:
+  179: #ifdef WIN32 DIFF_IMP_FORK, USERLOGIN, NIXSPEC_SETUID
+  263: #ifdef WIN32 DIFF_IMP, STATOP
+
+src\resmom\catch_child.c:
+    45: #ifdef WIN32 HEADER_FILE
+   105: #ifdef	WIN32 DECLARATION, FILEOP_CHDIR
+   108: #ifndef	WIN32 DECLARATION, SIGHAND
+   124: #ifndef WIN32 SIGHAND
+   415: #if !defined(WIN32) WINSPEC_BUG
+   549: #if !defined(WIN32) WINSPEC_BUG
+  1284: #ifndef WIN32 NIXSPEC, MAJOR
+  1391: #ifdef	WIN32 WINSPEC, MINOR
+  1436: #ifndef WIN32 DECLARATION, DIFF_IMP_FORK
+  1455: #ifdef WIN32 DIFF_IMP
+  1805: #ifndef WIN32 DIFF_FEAT, DEADC ?
+  1826: #ifndef WIN32 DIFF_IMP_FORK
+  1877: #ifndef WIN32 DIFF_IMP_FORK, FILEOP_CHDIR
+  2419: #ifdef WIN32 PATHOP, PRINTFORMAT
+
+src\resmom\mom_comm.c:
+    49: #ifndef WIN32 HEADER_FILE
+   264: #ifdef WIN32 SECFILE
+   467: #ifdef WIN32 WINSPEC_HANDLE
+   595: #ifdef WIN32 DECLARATION, FILEOP_DIR, STATOP
+   612: #ifdef WIN32 DIFF_IMP, MAJOR, FILEOP_DIR, STATOP, FILEOP_READ, FILEOP_OPEN
+  1971: #ifndef WIN32 DIFF_IMP_FORK, PIPEOP
+  2287: #ifndef WIN32 DIFF_IMP_FORK, PIPEOP
+  2422: #ifndef WIN32 DIFF_IMP_FORK, PIPEOP
+  3352: #ifdef WIN32 DIFF_IMP, USERINFO
+  3373: #ifndef WIN32 DIFF_IMP, USERINFO
+  3387: #ifdef WIN32 FILEOP_DIR, DIFF_IMP
+  4966: #ifndef WIN32 DIFF_FEAT ?, PIPEOP
+  5010: #ifndef WIN32 DIFF_FEAT ?, PIPEOP
+  5145: #ifndef WIN32 DIFF_FEAT ?, PIPEOP
+  5694: #ifdef WIN32 SOCKOP_CLOSE
+  5741: #ifdef WIN32 DECLARATION
+  5781: #ifdef WIN32 DIFF_IMP, USERINFO
+  5828: #ifdef WIN32 DIFF_IMP, USERINFO
+  5880: #ifdef WIN32 DIFF_IMP_PROC
+  5924: #ifdef WIN32 DIFF_IMP_PROC
+  5946: #ifdef WIN32 WINSPEC
+  5969: #ifdef WIN32 WINSPEC
+
+src\resmom\mom_hook_func.c:
+    45: #ifndef WIN32 HEADER_FILE
+   155: #ifdef WIN32 WINSPEC, DIFF_IMP_env
+   558: #ifndef WIN32 DIFF_IMP, SECFILE
+   786: #ifdef WIN32 DECLARATION, FILEOP, DIFF_IMP_POPEN
+   878: #ifndef WIN32 DIFF_IMP_FORK, MAJOR, SIGHAND_ALARM
+  1048: #ifndef WIN32 SECFILE, DIFF_IMP
+  1081: #ifndef WIN32 SECFILE, FILEOP_OPEN
+  1190: #ifdef	WIN32 SECFILE
+  1454: #ifdef WIN32 DIFF_IMP_env
+  1466: #ifndef WIN32 DIFF_IMP_FORK
+  1726: #ifdef WIN32 SECFILE
+  2880: #ifndef WIN32 DIFF_IMP_wsystem
+  2959: #ifdef WIN32 DECLARATION, DIFF_IMP_PROC
+  3838: #ifndef WIN32 NIXSPEC, MINOR
+
+src\resmom\mom_main.c:
+     54: #ifdef	WIN32 HEADER_FILE
+    114: #ifndef	WIN32 DIFF_IMP_TOPO
+    169: #ifdef	WIN32 DIFF_IMP
+    234: #ifdef WIN32 DIFF_IMP, PATHOP
+    377: #ifdef WIN32 DIFF_IMP
+    382: #ifndef	WIN32 NIXSPEC_RLIMIT
+    408: #ifdef	WIN32 PATHOP
+    415: #ifdef WIN32 WINSPEC_SRVC
+    493: #ifdef	WIN32 DIFF_FEAT
+    568: #ifdef	WIN32 DIFF_FEAT
+    610: #ifndef	WIN32 SIGHAND
+    632: #ifdef	WIN32 PATHOP
+    661: #ifndef	WIN32 DIFF_IMP
+    688: #ifdef WIN32 WINSPEC, STATOP
+    771: #ifndef	WIN32 DIFF_IMP
+   1053: #ifdef	WIN32 DIFF_IMP_PROC
+   1107: #ifndef	WIN32 /* ---- UNIX ------------------------------------------*/ NIXSPEC_RLIMIT
+   1467: #ifdef	WIN32 PATHOP
+   1528: #ifdef	WIN32 WINSPEC
+   1591: #ifdef WIN32 WINSPEC_SRVC
+   1903: #ifdef	WIN32 DIFF_IMP, PATHOP
+   1910: #ifdef	WIN32 PATHOP
+   2325: #ifdef	WIN32 PATHOP
+   2413: #ifdef	WIN32 DIFF_FEAT
+   2606: #ifdef	WIN32 PATHOP
+   2619: #ifdef	WIN32 DIFF_IMP
+   2648: #ifdef	WIN32 DIFF_IMP, SECFILE
+   2727: #ifdef	WIN32 WINSPEC, SHELL_PARSE
+   2749: #ifdef	WIN32 PRINTFORMAT
+   2755: #ifdef	WIN32 PRINTFORMAT
+   2796: #ifdef	WIN32 SHELL_PARSE
+   2802: #ifdef	WIN32 DIFF_IMP_env, MAJOR, DIFF_IMP_FORK, PIPEOP
+   3407: #ifdef  WIN32 SECFILE, TMPFILE
+   3593: #ifdef WIN32 WINSPEC
+   3643: #ifdef	WIN32 PATHOP
+   3658: #ifdef	WIN32 SECFILE, FILEOP_DIR, TMPFILE
+   3705: #ifdef	WIN32 SECFILE, FILEOP_DIR, TMPFILE
+   4101: #ifdef	WIN32 PATHOP
+   4151: #ifdef	WIN32 SECFILE
+   4159: #ifdef	WIN32 STATOP
+   4458: #ifdef	WIN32 WINSPEC_BUG, DECLARATION, DIFF_PARSING
+   4482: #ifdef	WIN32 WINSPEC_BUG, DIFF_PARSING
+   4965: #ifdef	WIN32 SECFILE
+   5429: #ifdef	WIN32 DECLARATION, DIFF_IMP_POPEN
+   5511: #ifdef  WIN32 TMPFILE, SECFILE
+   5523: #ifdef	WIN32 DIFF_IMP_POPEN
+   5538: #ifdef	WIN32 DIFF_IMP, MINOR, SIGHAND_ALARM
+   5549: #ifdef	WIN32 FILEOP_READ, DIFF_IMP_POPEN
+   5557: #ifdef	WIN32 DIFF_PARSING
+   5581: #ifdef	WIN32 WINSPEC, DIFF_IMP_POPEN, PIPEOP
+   5591: #ifndef	WIN32 NIXSPEC, SIGHAND_ALARM
+   5597: #ifndef	WIN32 NIXSPEC, SIGHAND_ALARM
+   5610: #ifdef	WIN32 SIGHAND_ALARM, DIFF_IMP_POPEN
+   5632: #ifndef	WIN32 NIXSPEC, SIGHAND_ALARM
+   5707: #ifdef	WIN32 DIFF_IMP_PROC
+   5909: #ifdef	WIN32 SOCKOP_CLOSE
+   5987: #ifndef	WIN32 NIXSPEC, SIGHAND_ALARM
+   5995: #ifndef	WIN32 NIXSPEC, SIGHAND_ALARM
+   6071: #ifdef	WIN32 DIFF_IMP_PROC
+   6100: #ifdef	WIN32 DIFF_IMP_PROC
+   6228: #ifdef	WIN32 WINSPEC, MINOR
+   6328: #ifdef	WIN32 SOCKOP_CLOSE
+   6382: #ifdef	WIN32 DIFF_IMP_PROC
+   6483: #ifdef	WIN32 DIFF_IMP
+   6523: #ifdef	WIN32 STATOP, FILEOP_LOCK
+   7454: #ifdef	WIN32 DIFF_FEAT_USAGE
+   7467: #ifdef	WIN32 WINSPEC, DIFF_FEAT_USAGE
+   7665: #ifndef WIN32 NIXSPEC_SETUID
+   7677: #ifdef WIN32 DIFF_IMP_PROC
+   7880: #ifdef WIN32 SIGHAND, DIFF_IMP_PROC
+   8103: #ifdef	WIN32 DIFF_IMP, MINOR
+   8152: #ifdef	WIN32 DECLARATION, MAJOR
+   8186: #ifdef WIN32 DIFF_IMP, MINOR
+   8199: #ifdef	WIN32 WINSPEC_SRVC
+   8233: #ifdef WIN32 WINSPEC_SRVC
+   8272: #ifdef WIN32 WINSPEC_SRVC
+   8289: #ifndef WIN32 NIXSPEC
+   8310: #ifdef	WIN32 DIFF_IMP, PATHOP
+   8347: #ifdef WIN32 WINSPEC_SRVC
+   8371: #ifdef	WIN32 WINSPEC_SRVC
+   8385: #ifdef	WIN32 WINSPEC_SRVC
+   8399: #ifdef	WIN32 WINSPEC_SRVC
+   8485: #ifdef	WIN32 WINSPEC_SRVC
+   8499: #ifdef	WIN32 DIFF_IMP_env
+   8507: #ifdef	WIN32 WINSPEC_SRVC
+   8519: #ifndef	WIN32 /* ---- UNIX ------------------------------------------*/ DIFF_IMP, MAJOR, NIXSPEC_RLIMIT
+   8649: #ifdef	WIN32 PATHOP
+   8662: #ifdef	WIN32 WINSPEC_SRVC, SECFILE
+   8722: #ifdef	WIN32 WINSPEC_SRVC
+   8732: #ifdef	WIN32 SECFILE
+   8754: #ifdef	WIN32 WINSPEC_SRVC
+   8765: #ifdef	WIN32 SOCKOP_INIT
+   8837: #ifdef	WIN32 WINSPEC_SRVC
+   8853: #ifdef	WIN32 WINSPEC_SRVC
+   8862: #ifdef	WIN32 SECFILE
+   8870: #ifdef	WIN32 WINSPEC_SRVC
+   8880: #ifdef	WIN32 WINSPEC_SRVC
+   8900: #ifdef	WIN32 SOCKOP_INIT
+   8907: #ifdef	WIN32 SOCKOP_INIT
+   8916: #ifdef	WIN32 WINSPEC_SRVC
+   8927: #ifdef	WIN32 SOCKOP_INIT
+   8934: #ifdef	WIN32 SOCKOP_INIT
+   8944: #ifdef	WIN32 WINSPEC_SRVC
+   8973: #ifdef	WIN32 /* ------------------------------------------------------------*/ DIFF_IMP, FILEOP_LOCK
+   9034: #ifdef	WIN32 FILEOP_LOCK
+   9162: #ifdef	WIN32 DATETIME
+   9172: #ifndef	WIN32 DATETIME, SIGHAND
+   9186: #ifdef	WIN32 WINSPEC_SRVC
+   9207: #ifdef	WIN32 WINSPEC_SRVC
+   9228: #ifdef	WIN32 WINSPEC_SRVC
+   9310: #ifdef	WIN32 PRINTFORMAT
+   9318: #ifdef	WIN32 DIFF_IMP, MINOR
+   9333: #ifdef	WIN32 WINSPEC_SRVC
+   9342: #ifndef	WIN32  DIFF_FEAT
+   9462: #ifndef	WIN32 DIFF_IMP
+   9471: #ifdef	WIN32 WINSPEC_SRVC
+   9481: #ifdef	WIN32 WINSPEC, MAJOR
+   9580: #ifdef	WIN32 WINSPEC_SRVC
+   9600: #ifndef	WIN32 SIGHAND
+  10061: #ifndef	WIN32 DIFF_IMP, NIXSPEC
+  10098: #ifdef	WIN32 WINSPEC, FILEOP_LOCK, DIFF_IMP_env
+  10133: #ifdef	WIN32 DIFF_IMP_PROC
+  10140: #ifdef	WIN32 PATHOP
+  10157: #ifdef	WIN32 WINSPEC_SRVC, MAJOR
+  10508: #ifdef	WIN32 DIFF_IMP
+  10822: #ifndef	WIN32 MAJOR, DIFF_IMP_TOPO
+  10893: #ifdef WIN32 DECLARATION, DIFF_IMP_TOPO
+  10919: #ifndef	WIN32 DIFF_IMP_TOPO
+  10938: #ifndef WIN32 DIFF_IMP_TOPO, PRINTFORMAT
+  11002: #ifndef WIN32 DIFF_IMP, MINOR
+
+src\resmom\mom_server.c:
+    45: #ifndef WIN32 HEADER_FILE
+   369: #ifdef WIN32 WINSPEC, MINOR
+  1403: #ifdef WIN32 WINSPEC, MINOR
+
+src\resmom\prolog.c:
+   51: #ifdef	WIN32 HEADER_FILE
+   74: #ifdef	WIN32 WINSPEC_HANDLE
+   80: #ifdef	WIN32 DIFF_IMP_PROC
+  120: #ifdef WIN32 DECLARATION
+  143: #ifdef WIN32 WINSPEC, PRINTFORMAT
+  186: #ifndef WIN32 SIGHAND_ALARM
+  247: #ifdef	WIN32 DEADC
+  255: #ifdef WIN32 DECLARATION, MAJOR
+  280: #ifdef WIN32 SECFILE
+  291: #ifdef WIN32 WINSPEC, MAJOR, PIPEOP
+
+src\resmom\requests.c:
+    47: #ifdef WIN32 HEADER_FILE
+   106: #ifdef	WIN32 DECLARATION, DEADC, FILEOP_CHDIR
+   163: #ifndef WIN32 DECLARATION, DIFF_IMP_staging
+   194: #ifndef	WIN32 NIXSPEC, STATOP
+   217: #ifdef WIN32 DIFF_IMP_FORK, MAJOR, USERLOGIN
+   608: #ifdef WIN32 DIFF_IMP_staging
+   767: #ifdef WIN32 DIFF_IMP
+   802: #ifdef	WIN32 FILEOP_WRITE
+   899: #ifdef WIN32 WINSPEC, PATHOP
+  1029: #ifdef	WIN32 DECLARATION, DEADC
+  1814: #ifdef WIN32 LOGFORMAT
+  2146: #ifndef WIN32 NIXSPEC, DIFF_IMP_FORK
+  2152: #ifdef WIN32 PATHOP
+  2165: #ifdef WIN32 DIFF_IMP_FORK
+  2327: #ifdef WIN32 STATOP, PATHOP_UNC
+  2499: #ifdef WIN32 DIFF_IMP_FORK
+  2542: #ifdef WIN32 WINSPEC
+  2556: #ifdef WIN32 WINSPEC
+  2570: #ifdef WIN32 SOCKOP_CLOSE
+  2579: #ifdef WIN32 /* WIN32 ------------------------------------------------------ */ DIFF_IMP_staging, MAJOR
+  3627: #ifdef	WIN32 DIF_IMP, MINOR, FILEOP
+  3645: #ifdef	WIN32 USERLOGIN, FILEOP_DIR, DIFF_IMP
+  4037: #ifdef WIN32 DEADC, DIFF_IMP_FORK, DECLARATION
+  4071: #ifndef	WIN32 DIFF_IMP_FORK
+  4095: #ifdef	WIN32 DIFF_IMP
+  4236: #ifdef	WIN32 USERLOGIN, FILEOP_DIR, DIFF_IMP
+  4461: #ifndef WIN32 DECLARATION, DIFF_IMP_FORK
+  4516: #ifndef WIN32 DIFF_IMP_FORK
+  4529: #ifdef WIN32 DIFF_IMP
+  4858: #ifdef WIN32 SECFILE
+  5065: #ifndef WIN32 DIFF_IMP
+
+src\resmom\rm_dep.h:
+  47: #ifndef WIN32 DECLARATION, NIXSPEC
+  61: #ifndef	WIN32 DECLARATION, NIXSPEC
+
+src\resmom\stage_func.c:
+    52: #ifdef WIN32
+    82: #ifndef WIN32
+    98: #ifdef	WIN32 DECLARATION, PATHOP
+   104: #ifdef WIN32 WINSPEC, LOGFORMAT
+   201: #ifdef WIN32 PATHOP
+   218: #ifdef WIN32 PATHOP
+   401: #ifdef WIN32 PATHOP_UNC
+   486: #ifdef WIN32 PATHOP
+   503: #ifdef WIN32 PATHOP
+   553: #ifdef WIN32 PATHOP, FILEOP_DIR
+   609: #ifdef WIN32 FILEOP_DIR
+   640: #ifdef WIN32 PATHOP
+   657: #ifdef WIN32 FILEOP_DIR
+   790: #ifdef WIN32 PATHOP_UNC, STATOP
+  1102: #ifdef WIN32 DIFF_IMP, FILEOP
+  1205: #ifdef WIN32 DECLARATION, PATHOP
+  1219: #ifndef WIN32 USERLOGIN
+  1230: #ifndef WIN32 STATOP, USERLOGIN
+  1265: #ifndef WIN32 USERLOGIN
+  1277: #ifdef WIN32 FILEOP_DIR, DIFF_IMP_FORK, DIFF_IMP_POPEN
+  1320: #ifndef WIN32 DIFF_IMP_staging, PATHOP
+  1459: #ifdef WIN32 DIFF_IMP_staging, DECLARATION
+  1485: #ifdef WIN32 USERLOGIN, PATHOP
+  1509: #ifndef WIN32 PATHOP
+  1519: #ifndef WIN32 PATHOP_UNC
+  1534: #ifdef WIN32 PATHOP, DIFF_IMP_staging
+  1564: #ifndef WIN32 PATHOP
+  1577: #ifdef WIN32 PATHOP, DIFF_IMP_staging
+  1607: #ifndef WIN32 PATHOP
+  1617: #ifndef WIN32 PATHOP
+  1628: #ifndef WIN32 DIFF_IMP_staging, MAJOR, DIFF_IMP_FORK
+  2078: #ifdef WIN32 WINSPEC, MAJOR
+
+src\resmom\start_exec.c:
+   139: #ifndef WIN32 DEADC
+  1689: #ifndef WIN32 DEADC
+  1980: #ifdef WIN32 DEADC
+  2619: #ifndef WIN32 DEADC
+  3521: #ifndef WIN32 DEADC
+  4256: #ifndef WIN32 DEADC
+
+src\resmom\vnode_storage.c:
+  41: #ifdef	WIN32 HEADER_FILE
+
+src\server\geteusernam.c:
+   53: #ifndef WIN32 DEADC
+   63: #ifdef WIN32 DEADC
+  114: #ifdef WIN32 DEADC
+  276: #ifdef WIN32 DEADC
+  334: #ifdef WIN32 DEADC
+  355: #ifdef WIN32 DEADC
+  370: #ifndef WIN32 DEADC
+  403: #ifdef WIN32 DEADC
+  430: #ifdef WIN32 DEADC
+  454: #ifndef WIN32 DEADC
+  477: #ifdef WIN32 DEADC
+
+src\server\hook_func.c:
+   101: #ifndef WIN32 DEADC
+   402: #ifdef WIN32 DEADC
+   713: #if defined(WIN32)    /* Windows */ DEADC
+  6764: #ifdef WIN32 DEADC
+  6867: #ifdef WIN32 DEADC
+  6899: #ifndef WIN32 DEADC
+  6928: #ifdef WIN32 DEADC
+  6935: #ifndef WIN32 DEADC
+
+src\server\issue_request.c:
+  763: #ifdef WIN32 DEADC
+
+src\server\job_func.c:
+    79: #ifndef WIN32 HEADER_FILE
+   112: #ifdef WIN32 HEADER_FILE
+   144: #ifdef WIN32 DECLARATION, USERLOGIN
+   392: #ifdef WIN32 WINSPEC_HANDLE, USERINFO
+   415: #if defined(PBS_MOM) && defined(WIN32) DEADC
+   510: #ifdef WIN32 USERLOGIN, PATHOP_UNC
+   614: #ifdef WIN32 WINSPEC_HANDLE
+   836: #ifndef WIN32 DECLARATION, DIFF_IMP_FORK
+   872: #ifndef WIN32 NIXSPEC, DIFF_IMP_PROC
+   946: #ifndef WIN32 DIFF_IMP_FORK
+   996: #ifdef WIN32 WINSPEC, PATHOP
+  1052: #ifndef WIN32 NIXSPEC, DIFF_IMP_FORK
+  1224: #ifdef WIN32 SECFILE
+  1234: #if !defined(PBS_MOM) && defined(WIN32) DEADC
+  1292: #ifdef WIN32 WINSPEC, FILEOP
+
+src\server\job_recov_db.c:
+   72: #ifndef WIN32 DEADC
+   89: #ifdef WIN32 DEADC
+  111: #ifndef WIN32 DEADC
+  389: #ifndef WIN32 DEADC
+
+src\server\job_recov.c:
+   62: #ifndef WIN32 HEADER_FILE
+   78: #ifdef WIN32 HEADER_FILE
+  153: #ifdef WIN32 FILEOP_OPEN
+  189: #ifdef WIN32 SECFILE
+  225: #ifdef WIN32 SECFILE
+  241: #ifdef WIN32 SECFILE
+  287: #ifdef WIN32 SECFILE, FILEOP
+  349: #ifdef WIN32 SECFILE
+  358: #ifdef WIN32 SECFILE, FILEOP
+  387: #ifdef WIN32 FILEOP
+  405: #ifdef WIN32 PATHOP
+  500: #if defined(PBS_MOM) && defined(WIN32) WINSPEC_HANDLE
+  508: #ifdef WIN32 SECFILE, FILEOP
+  588: #ifdef WIN32 FILEOP_OPEN
+  663: #ifdef WIN32 SECFILE
+  703: #ifdef WIN32 SECFILE
+  717: #ifdef WIN32 SECFILE
+  755: #ifdef WIN32 SECFILE, FILEOP
+  873: #ifdef WIN32 SECFILE
+  883: #ifdef WIN32 FILEOP
+  900: #ifdef WIN32 PATHOP
+  949: #if defined(PBS_MOM) && defined(WIN32) WINSPEC_HANDLE
+
+src\server\node_func.c:
+   110: #ifndef WIN32 DEADC
+   128: #ifdef WIN32  DEADC
+   144: #if !defined(H_ERRNO_DECLARED) && !defined(WIN32)  DEADC
+  2129: #ifdef	WIN32  DEADC
+  2155: #ifdef	WIN32  DEADC
+
+src\server\node_manager.c:
+   121: #ifndef WIN32 DEADC
+   131: #ifndef WIN32 DEADC
+   149: #ifdef WIN32 DEADC
+   178: #if !defined(H_ERRNO_DECLARED) && !defined(WIN32) DEADC
+  4519: #ifdef WIN32 DEADC
+  6120: #ifdef WIN32 DEADC
+
+src\server\process_request.c:
+   88: #ifndef WIN32 HEADER_FILE
+  621: #ifndef WIN32 DEADC
+  654: #ifndef WIN32 DEADC
+  716: #ifdef	WIN32 DIFF_IMP
+
+src\server\reply_send.c:
+   94: #ifndef WIN32 DECLARATION, SIGHAND_ALARM
+  164: #ifndef WIN32 SIGHAND_ALARM
+  199: #ifndef WIN32 SIGHAND_ALARM
+  207: #ifndef WIN32 SIGHAND_ALARM
+  232: #ifndef WIN32 SIGHAND_ALARM
+
+src\server\req_jobobit.c:
+  71: #ifdef WIN32 DEADC
+
+src\server\req_quejob.c:
+    77: #ifdef WIN32 HEADER_FILE
+   123: #ifdef WIN32 HEADER_FILE
+  1137: #ifdef WIN32 USERINFO, DIFF_IMP
+  1401: #ifdef WIN32 USERINFO, DIFF_IMP
+  1443: #ifdef WIN32 SECFILE
+  1510: #ifndef WIN32 DEADC
+  1548: #ifndef WIN32 DEADC
+  1625: #ifdef WIN32 DEADC
+  1694: #ifdef WIN32 FILEOP_DIR
+  1760: #ifdef	WIN32 DEADC
+  1852: #ifdef WIN32 DEADC
+  2560: #ifdef WIN32 DEADC
+
+src\server\setup_resc.c:
+  224: #ifdef WIN32 SECFILE, FILEOP_OPEN, FILEOP_CHMOD
+  301: #ifdef WIN32 FILEOP
+
+src\server\svr_func.c:
+   163: #ifdef	WIN32 DEADC
+  4311: #ifdef WIN32 DEADC
+  5503: #ifdef WIN32 DEADC
+  5703: #ifdef	WIN32 DEADC
+  5717: #ifdef WIN32 DEADC
+  5853: #ifdef WIN32 DEADC
+  5864: #ifdef	WIN32 DEADC
+  6151: #ifndef	WIN32 DEADC
+  6156: #ifdef 	WIN32 DEADC
+  6192: #ifdef WIN32 DEADC
+  6282: #ifdef WIN32 DEADC
+  6867: #ifdef WIN32 DEADC
+  6878: #ifdef WIN32 DEADC
+  6907: #ifdef WIN32 DEADC
+  7127: #ifndef WIN32 DEADC
+
+src\server\svr_jobfunc.c:
+    80: #ifndef WIN32 DEADC
+   113: #ifdef WIN32 DEADC
+   132: #ifndef WIN32 DEADC
+  1260: #ifdef WIN32 DEADC
+  1755: #ifdef WIN32 DEADC
+
+src\server\vnparse.c:
+  73: #ifndef WIN32 HEADER_FILE
+  81: #ifdef	WIN32 HEADER_FILE
+
+src\tools\chk_tree.c:
+  118: #ifdef WIN32 SECFILE, FILEOP
+
+src\tools\hostn.c:
+  110: #ifdef WIN32 SOCKOP_INIT
+  131: #ifndef WIN32 DIFF_IMP
+  188: #ifndef WIN32 DIFF_IMP
+
+src\tools\pbs_python.c:
+  1135: #ifdef WIN32 WINSPEC, DIFF_PARSING
+  1683: #ifdef WIN32 WINSPEC, DIFF_PARSING
+  2257: #ifndef WIN32 DECLARATION
+  2277: #ifdef WIN32 FILEOP, SOCKOP_INIT
+  2327: #ifdef WIN32 DIFF_IMP, MAJOR
+  2773: #ifdef WIN32 PATHOP
+  2780: #ifdef WIN32 PATHOP
+
+src\tools\pbs_sleep.c:
+  56: #ifdef WIN32 HEADER_FILE
+
+src\tools\pbs_upgrade_job.c:
+  83: #ifndef WIN32 DEADC
+
+src\tools\printjob.c:
+  469: #ifdef WIN32 USERINFO
+  520: #if defined(PRINTJOBSVR) && defined(WIN32) DEADC
+  730: #ifdef WIN32 DEADC
+
+src\tools\tracejob.c:
+  102: #ifdef WIN32 DIFF_IMP
+
+src\unsupported\pbs_rmget.c:
+  75: #ifdef WIN32 SOCKOP_INIT
+
+win_configure\include\pbs_config.h:
+  53: #ifdef _WIN32_WINNT
