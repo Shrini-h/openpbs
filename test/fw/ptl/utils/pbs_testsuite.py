@@ -942,7 +942,9 @@ class PBSTestSuite(unittest.TestCase):
             server = cls.servers[server]
         except BaseException:
             server = None
-        return MoM(hostname, pbsconf_file=pbsconf_file, server=server)
+        from ptl.utils.pbs_mom import get_mom_obj
+        return get_mom_obj(hostname, pbsconf_file=pbsconf_file, server=server)
+        # return MoM(hostname, pbsconf_file=pbsconf_file, server=server)
 
     def init_proc_mon(self):
         """
