@@ -38,12 +38,29 @@
 # subject to Altair's trademark licensing policies.
 
 import ptl
+import os
+import logging
+import importlib
+
 from ptl.utils._pbs_mom import MoM
+from ptl.utils.pbs_dshutils import DshUtils
 
 
 def get_mom_obj(name=None, attrs={}, pbsconf_file=None, snapmap={},
                 snap=None, server=None, db_access=None):
-    pass
+
+    du = DshUtils()
+    platform = du.get_platform(hostname=name, pyexec="python3")
+    # print("-------Inside get_mom_obj-----------")
+    # print("-----Name: %s; Platform: %s" %(name, platform))
+
+    if "win" in platform:
+        return WinMoM(name, attrs, pbsconf_file, snapmap, snap, server, db_access)
+    else:
+        return MoM(name, attrs, pbsconf_file, snapmap, snap, server, db_access)
+
+
+from ptl.lib.pbs_testlib import *
 
 
 class WinMoM(MoM):
@@ -99,30 +116,13 @@ class WinMoM(MoM):
             _m += ['@', pbsconf_file]
         _m += [': ']
         self.logprefix = "".join(_m)
-        self.pi = PBSInitServices(hostname=self.hostname,
+        # Windows Implementation of InitServices
+        self.pi = PBSInitMoM(hostname=self.hostname,
                                   conf=self.pbs_conf_file)
         self.configd = os.path.join(self.pbs_conf['PBS_HOME'], 'mom_priv',
                                     'config.d')
         self.config = {}
-        # if self.platform == 'cray' or self.platform == 'craysim':
-            # usecp = os.path.realpath('/home')
-            # if self.platform == 'cray':
-                # if os.path.exists('/opt/cray/alps/default/bin/apbasil'):
-                    # alps_client = '/opt/cray/alps/default/bin/apbasil'
-                # else:
-                    # alps_client = self.du.which(exe='apbasil')
-            # else:
-                # alps_client = "/opt/alps/apbasil.sh"
-            # self.dflt_config = {'$clienthost': self.server.hostname,
-                                # '$vnodedef_additive': 0,
-                                # '$alps_client': alps_client,
-                                # '$usecp': '*:%s %s' % (usecp, usecp)}
-        # elif self.platform == 'shasta':
-            # usecp = os.path.realpath('/lus')
-            # self.dflt_config = {'$clienthost': self.server.hostname,
-                                # '$usecp': '*:%s %s' % (usecp, usecp)}
-        # else:
-            self.dflt_config = {'$clienthost': self.server.hostname}
+        self.dflt_config = {'$clienthost': self.server.hostname}
         self.version = None
         self._is_cpuset_mom = None
 
@@ -172,6 +172,7 @@ class WinMoM(MoM):
         """
         Get the PBS mom pid
         """
+        # Windows Implementation
         return super(MoM, self)._get_pid(inst=self)
 
     def all_instance_pids(self):
@@ -189,6 +190,7 @@ class WinMoM(MoM):
         :param launcher: Optional utility to invoke the launch of the service
         :type launcher: str or list or None
         """
+        # Windows Implementation
         if args is not None or launcher is not None:
             return super(MoM, self)._start(inst=self, args=args,
                                            cmd_map=self.conf_to_cmd_map,
@@ -990,3 +992,217 @@ class WinMoM(MoM):
             self.logger.error('%s: cgroup subsystems not mounted' %
                               self.hostname)
             raise AssertionError('cgroup subsystems not mounted')
+
+from ptl.lib.pbs_testlib import PBSInitServices
+
+class PBSInitMoM(PBSInitServices):
+    """
+    PBS MoM initialization services
+
+    :param hostname: Machine hostname
+    :type hostname: str or None
+    :param conf: PBS configuaration file
+    :type conf: str or None
+    """
+
+    def __init__(self, hostname=None, conf=None):
+        self.logger = logging.getLogger(__name__)
+        self.hostname = hostname
+        if self.hostname is None:
+            self.hostname = socket.gethostname()
+        # self.dflt_conf_file = os.environ.get('PBS_CONF_FILE', 'C:\Program Files (x86)\PBS\pbs.conf')
+        self.dflt_conf_file = "C:\Program Files (x86)\PBS\pbs.conf"
+        self.conf_file = conf
+        self.du = DshUtils()
+        # self.is_linux = sys.platform.startswith('linux')
+
+    def initd(self, hostname=None, op='status', conf_file=None,
+              init_script=None, daemon='all'):
+        """
+        Run the init script for a given operation
+
+        :param hostname: hostname on which to execute the init script
+        :type hostname: str or None
+        :param op: one of status, start, stop, restart
+        :type op: str
+        :param conf_file: optional path to a configuration file
+        :type conf_file: str or None
+        :param init_script: optional path to a PBS init script
+        :type init_script: str or None
+        :param daemon: name of daemon to operate on. one of server, mom,
+                       sched, comm or all
+        :type daemon: str
+        """
+        if hostname is None:
+            hostname = self.hostname
+        if conf_file is None:
+            conf_file = self.conf_file
+        return self._unix_initd(hostname, op, conf_file, init_script, daemon)
+    
+    def restart(self, hostname=None, init_script=None):
+        """
+        Run the init script for a restart operation
+
+        :param hostname: hostname on which to execute the init script
+        :type hostname: str or None
+        :param init_script: optional path to a PBS init script
+        :type init_script: str or None
+        """
+        return self.initd(hostname, op='restart', init_script=init_script)
+
+    def restart_mom(self, hostname=None, init_script=None):
+        """
+        Run the init script for a restart mom
+
+        :param hostname: hostname on which to restart mom
+        :type hostname: str or None
+        :param init_script: optional path to a PBS init script
+        :type init_script: str or None
+        """
+        return self.initd(hostname, op='restart', init_script=init_script,
+                          daemon='mom')
+
+    def start(self, hostname=None, init_script=None):
+        """
+        Run the init script for a start operation
+
+        :param hostname: hostname on which to execute the init script
+        :type hostname: str or None
+        :param init_script: optional path to a PBS init script
+        :type init_script: str or None
+        """
+        return self.initd(hostname, op='start', init_script=init_script)
+
+    def start_mom(self, hostname=None, init_script=None):
+        """
+        Run the init script for a start mom
+
+        :param hostname: hostname on which to start mom
+        :type hostname: str or None
+        :param init_script: optional path to a PBS init script
+        :type init_script: str or None
+        """
+        return self.initd(hostname, op='start', init_script=init_script,
+                          daemon='mom')
+
+    def stop(self, hostname=None, init_script=None):
+        """
+        Run the init script for a stop operation
+
+        :param hostname: hostname on which to execute the init script
+        :type hostname: str or None
+        :param init_script: optional path to a PBS init script
+        :type init_script: str or None
+        """
+        return self.initd(hostname, op='stop', init_script=init_script)
+
+
+    def stop_mom(self, hostname=None, init_script=None):
+        """
+        Run the init script for a stop mom
+
+        :param hostname: hostname on which to stop mom
+        :type hostname: str or None
+        :param init_script: optional path to a PBS init script
+        :type init_script: str or None
+        """
+        return self.initd(hostname, op='stop', init_script=init_script,
+                          daemon='mom')
+
+    def status(self, hostname=None, init_script=None):
+        """
+        Run the init script for a status operation
+
+        :param hostname: hostname on which to execute the init script
+        :type hostname: str or None
+        :param init_script: optional path to a PBS init script
+        :type init_script: str or None
+        """
+        return self.initd(hostname, op='status', init_script=init_script)
+
+    def status_mom(self, hostname=None, init_script=None):
+        """
+        Run the init script for a status mom
+
+        :param hostname: hostname on which to status mom
+        :type hostname: str or None
+        :param init_script: optional path to a PBS init script
+        :type init_script: str or None
+        """
+        return self.initd(hostname, op='status', init_script=init_script,
+                          daemon='mom')
+
+    def _unix_initd(self, hostname, op, conf_file, init_script, daemon):
+        """
+        Helper function for initd ``(*nix version)``
+
+        :param hostname: hostname on which init script should run
+        :type hostname: str
+        :param op: Operation on daemons - start, stop, restart or status
+        :op type: str
+        :param conf_file: Optional path to the pbs configuration file
+        :type conf_file: str or None
+        :param init_script: optional path to a PBS init script
+        :type init_script: str or None
+        :param daemon: name of daemon to operate on. one of server, mom,
+                       sched, comm or all
+        :type daemon: str
+        """
+        init_cmd = copy.copy(self.du.sudo_cmd)
+        if daemon is not None and daemon != 'all':
+            conf = self.du.parse_pbs_config(hostname, conf_file)
+            dconf = {
+                'PBS_START_SERVER': 0,
+                'PBS_START_MOM': 0,
+                'PBS_START_SCHED': 0,
+                'PBS_START_COMM': 0
+            }
+            if daemon == 'server' and conf.get('PBS_START_SERVER', 0) != 0:
+                dconf['PBS_START_SERVER'] = 1
+            elif daemon == 'mom' and conf.get('PBS_START_MOM', 0) != 0:
+                dconf['PBS_START_MOM'] = 1
+            elif daemon == 'sched' and conf.get('PBS_START_SCHED', 0) != 0:
+                dconf['PBS_START_SCHED'] = 1
+            elif daemon == 'comm' and conf.get('PBS_START_COMM', 0) != 0:
+                dconf['PBS_START_COMM'] = 1
+            for k, v in dconf.items():
+                init_cmd += ["%s=%s" % (k, str(v))]
+            _as = True
+        else:
+            fn = None
+            if (conf_file is not None) and (conf_file != self.dflt_conf_file):
+                init_cmd += ['PBS_CONF_FILE=' + conf_file]
+                _as = True
+            else:
+                _as = False
+            conf = self.du.parse_pbs_config(hostname, conf_file)
+        if (init_script is None) or (not init_script.startswith('/')):
+            if 'PBS_EXEC' not in conf:
+                msg = 'Missing PBS_EXEC setting in pbs config'
+                raise PbsInitServicesError(rc=1, rv=False, msg=msg)
+            if init_script is None:
+                init_script = os.path.join(conf['PBS_EXEC'], 'libexec',
+                                           'pbs_init.d')
+            else:
+                init_script = os.path.join(conf['PBS_EXEC'], 'etc',
+                                           init_script)
+            if not self.du.isfile(hostname, path=init_script, sudo=True):
+                # Could be Type 3 installation where we will not have
+                # PBS_EXEC/libexec/pbs_init.d
+                return []
+        init_cmd += [init_script, op]
+        msg = 'running init script to ' + op + ' pbs'
+        if daemon is not None and daemon != 'all':
+            msg += ' ' + daemon
+        msg += ' on ' + hostname
+        if conf_file is not None:
+            msg += ' using ' + conf_file
+        msg += ' init_cmd=%s' % (str(init_cmd))
+        self.logger.info(msg)
+        ret = self.du.run_cmd(hostname, init_cmd, as_script=_as,
+                              logerr=False)
+        if ret['rc'] != 0:
+            raise PbsInitServicesError(rc=ret['rc'], rv=False,
+                                       msg='\n'.join(ret['err']))
+        else:
+            return ret
