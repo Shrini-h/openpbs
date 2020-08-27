@@ -491,7 +491,7 @@ class PBSTestSuite(unittest.TestCase):
             self.revert_servers()
             self.revert_pbsconf()
             self.revert_schedulers()
-            self.revert_moms()
+            # self.revert_moms()
 
         # turn off opt_backfill_fuzzy to avoid unexpected calendaring behavior
         # as many tests assume that scheduler will simulate each event
@@ -618,11 +618,11 @@ class PBSTestSuite(unittest.TestCase):
         Check whether the user is exist or not
         """
         testusersexist = True
-        for u in PBS_ALL_USERS:
-            rv = cls.du.check_user_exists(u.name, u.host, u.port)
-            if not rv:
-                _msg = 'User ' + str(u) + ' does not exist!'
-                raise setUpClassError(_msg)
+        # for u in PBS_ALL_USERS:
+            # rv = cls.du.check_user_exists(u.name, u.host, u.port)
+            # if not rv:
+                # _msg = 'User ' + str(u) + ' does not exist!'
+                # raise setUpClassError(_msg)
         return testusersexist
 
     @classmethod
@@ -1384,7 +1384,7 @@ class PBSTestSuite(unittest.TestCase):
 
         self._revert_pbsconf_server(server_vals_to_set)
 
-        self._revert_pbsconf_mom(primary_server, vals_to_set)
+        # self._revert_pbsconf_mom(primary_server, vals_to_set)
 
         self._revert_pbsconf_comm(primary_server, vals_to_set)
 

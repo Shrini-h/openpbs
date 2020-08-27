@@ -945,7 +945,7 @@ class PTLTestRunner(Plugin):
             self.result.startTest(test)
             raise SkipTest(rv)
         # function report hardware status and core files
-        self.check_hardware_status_and_core_files()
+        # self.check_hardware_status_and_core_files()
 
         def timeout_handler(signum, frame):
             raise TimeOut('Timed out after %s second' % timeout)

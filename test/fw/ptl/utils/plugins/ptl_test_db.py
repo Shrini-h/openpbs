@@ -1717,7 +1717,7 @@ class PTLTestDb(Plugin):
         else:
             testdata['pbs_version'] = 'unknown'
             testdata['hostname'] = 'unknown'
-        testdata['machinfo'] = self.__get_machine_info(_test)
+        # testdata['machinfo'] = self.__get_machine_info(_test)
         testdata['testparam'] = getattr(_test, 'param', None)
         testdata['suite'] = sn
         testdata['suitedoc'] = str(_test.__class__.__doc__)
