@@ -50,11 +50,11 @@ def get_mom_obj(name=None, attrs={}, pbsconf_file=None, snapmap={},
                 snap=None, server=None, db_access=None):
 
     du = DshUtils()
-    platform = du.get_platform(hostname=name, pyexec="python3")
-    # print("-------Inside get_mom_obj-----------")
-    # print("-----Name: %s; Platform: %s" %(name, platform))
+    platform = du.get_platform(hostname=name, pyexec="python")
+    print("-------Inside get_mom_obj-----------")
+    print("-----Name: %s; Platform: %s" %(name, platform))
 
-    if "win" in platform:
+    if "win32" in platform:
         return WinMoM(name, attrs, pbsconf_file, snapmap, snap, server, db_access)
     else:
         return MoM(name, attrs, pbsconf_file, snapmap, snap, server, db_access)
@@ -130,19 +130,149 @@ class WinMoM(MoM):
         # This is true by default, but can be set to False if
         # required by a test
         self.revert_to_default = True
+        self.du = DshUtils()
+        self.processes = {}
 
     def __del__(self):
         del self.__dict__
+
+    def _init_processes(self):
+        self.processes = {}
+
+    def _get_proc_info(self, hostname=None, name=None,
+                       pid=None, regexp=False):
+        """
+        Helper function to ``get_proc_info`` for Unix only system
+        """
+        platform = None
+
+        (ps_cmd, ps_arg) = ('tasklist', '')
+        if name is not None:
+            if not regexp:
+                cr = self.du.run_cmd(hostname, (ps_cmd + [ps_arg, name]),
+                                     level=logging.DEBUG2)
+            else:
+                cr = self.du.run_cmd(hostname, ps_cmd, level=logging.DEBUG2)
+        elif pid is not None:
+            cr = self.du.run_cmd(hostname, ps_cmd + ['-p', pid],
+                                 level=logging.DEBUG2)
+        else:
+            return
+
+        if cr['rc'] == 0 and cr['out']:
+            for proc in cr['out']:
+                _pi = None
+                try:
+                    _s = proc.split()
+                    p = _s[1]
+                    rss = None
+                    vsz = None
+                    pcpu = None
+                    command = _s[0]
+                except:
+                    continue
+                if ((pid is not None and p == str(pid)) or
+                    (name is not None and (
+                        (regexp and re.search(name, command) is not None) or
+                        (not regexp and name in command)))):
+                    _pi = ProcInfo(name=command)
+                    _pi.pid = p
+                    _pi.rss = rss
+                    _pi.vsz = vsz
+                    _pi.pcpu = pcpu
+                    _pi.command = command
+
+                if _pi is not None:
+                    if command in self.processes:
+                        self.processes[command].append(_pi)
+                    else:
+                        self.processes[command] = [_pi]
+        return self.processes
+
+    def get_proc_info(self, hostname=None, name=None, pid=None, regexp=False):
+        """
+        Return process information from a process name, or pid,
+        on a given host
+        :param hostname: The hostname on which to query the process
+                         info. On Windows,only localhost is queried.
+        :type hostname: str or none
+        :param name: The name of the process to query.
+        :type name: str or None
+        :param pid: The pid of the process to query
+        :type pid: int or None
+        :param regexp: Match processes by regular expression. Defaults
+                       to True. Does not apply to matching by PID.
+        :type regexp: bool
+        :returns: A list of ProcInfo objects, one for each matching
+                  process.
+        .. note:: If both, name and pid, are specified, name is used.
+        """
+        self._init_processes()
+        return self._get_proc_info(hostname, name, pid, regexp)
+
+    def _all_instance_pids(self, inst):
+        """
+        Return a list of all ``PIDS`` that match the
+        instance name or None.
+        """
+        cmd = 'pbs_mom'
+        self.logger.info("---------Inside _all_instance_pids of pbs_mom")
+        self.get_proc_info(self.hostname, ".*" + cmd + ".*",
+                           regexp=True)
+        _procs = self.processes.values()
+        self.logger.info("---------Inside _all_instance_pids; _procs: %s" %(str(_procs)))
+        if _procs:
+            _pids = []
+            for _p in _procs:
+                _pids.extend([x.pid for x in _p])
+            return _pids
+        return None
+
+    def _get_pid(self):
+        """
+        Get the ``PID`` associated to this instance.
+        Implementation note, the pid is read from the
+        daemon's lock file.
+
+        This is different than _all_instance_pids in that
+        the PID of the last running instance can be retrieved
+        with ``_get_pid`` but not with ``_all_instance_pids``
+        """
+        priv = 'mom_priv'
+        lock = 'mom.lock'
+        #path = os.path.join(self.pbs_conf['PBS_HOME'], priv, lock)
+        path = "\"C:\Program Files (x86)\PBS\home\mom_priv\mom.lock\""
+        cmd = ['type', path]
+        self.logger.info("---------Inside _get_pid; cmd: %s" %(str(cmd)))
+        rv = self.du.run_cmd(self.hostname, cmd=cmd)
+        if ((rv['rc'] == 0) and (len(rv['out']) > 0)):
+            pid = rv['out'][0].strip()
+        else:
+            pid = None
+        self.logger.info("---------Inside _get_pid; pid: %s" %(str(pid)))
+        return pid
+
+    def _isUp(self, inst):
+        """
+        returns True if MoM service is up and False otherwise
+        """
+        self.logger.info("---------Inside _isUp of pbs_mom")
+        live_pids = self._all_instance_pids(inst)
+        pid = self._get_pid()
+        if live_pids is not None and pid in live_pids:
+            return True
+        return False
 
     def isUp(self, max_attempts=None):
         """
         Check for PBS mom up
         """
         # Poll for few seconds to see if mom is up and node is free
+        self.logger.info("---------Inside isUp of pbs_mom")
         if max_attempts is None:
             max_attempts = self.ptl_conf['max_attempts']
         for _ in range(max_attempts):
-            rv = super(MoM, self)._isUp(self)
+            rv = self._isUp(self)
             if rv:
                 break
             time.sleep(1)
@@ -161,19 +291,56 @@ class WinMoM(MoM):
                 rv = False
         return rv
 
+    def _signal(self, sig, inst=None, procname=None):
+        """
+        Send signal ``sig`` to service. sig is the signal name
+        as it would be sent to the program kill, e.g. -HUP.
+
+        Return the ``out/err/rc`` from the command run to send
+        the signal. See DshUtils.run_cmd
+
+        :param inst: Instance
+        :type inst: str
+        :param procname: Process name
+        :type procname: str or None
+        """
+
+        pid = self._get_pid()
+
+        cmd = ['taskkill', '/F', 'PID']
+        self.logger.info("---------Inside _signal of pbs_mom")
+        if procname is not None:
+            pi = self.get_proc_info(self.hostname, procname)
+            if pi is not None and pi.values() and list(pi.values())[0]:
+                for _p in list(pi.values())[0]:
+                    cmd += [_p.pid]
+                    if sig is '-HUP':
+                        cmd += ['&', 'net start pbs_mom']
+                    ret = self.du.run_cmd(self.hostname, cmd,
+                                          sudo=True)
+                return ret
+
+        if pid is None:
+            return {'rc': 0, 'err': '', 'out': 'no pid to signal'}
+
+        cmd += [pid]
+        if sig is '-HUP':
+            cmd += ['&', 'net start pbs_mom']
+        return self.du.run_cmd(self.hostname, cmd, sudo=True)
+
     def signal(self, sig):
         """
         Send signal to PBS mom
         """
         self.logger.info(self.logprefix + 'sent signal ' + sig)
-        return super(MoM, self)._signal(sig, inst=self)
+        return self._signal(sig)
 
     def get_pid(self):
         """
         Get the PBS mom pid
         """
         # Windows Implementation
-        return super(MoM, self)._get_pid(inst=self)
+        return super(MoM, self)._get_pid()
 
     def all_instance_pids(self):
         """
@@ -836,8 +1003,10 @@ class WinMoM(MoM):
         _has_pro = False
         _has_epi = False
         phome = self.pbs_conf['PBS_HOME']
-        prolog = os.path.join(phome, 'mom_priv', 'prologue')
-        epilog = os.path.join(phome, 'mom_priv', 'epilogue')
+        # prolog = os.path.join(phome, 'mom_priv', 'prologue')
+        # epilog = os.path.join(phome, 'mom_priv', 'epilogue')
+        prolog = "\"C:\Program Files (x86)\PBS\home\mom_priv\prologue\""
+        epilog = "\"C:\Program Files (x86)\PBS\home\mom_priv\epilogue\""
         if self.du.isfile(self.hostname, path=prolog, sudo=True):
             _has_pro = True
         if filename == 'prologue':
@@ -868,13 +1037,20 @@ class WinMoM(MoM):
         defined on this MoM
         """
         phome = self.pbs_conf['PBS_HOME']
-        prolog = os.path.join(phome, 'mom_priv', 'prologue')
-        epilog = os.path.join(phome, 'mom_priv', 'epilogue')
-        ret = self.du.rm(self.hostname, epilog, force=True,
-                         sudo=True, logerr=False)
+        self.logger.info("---------Inside delete_pelog of pbs_mom")
+        # prolog = os.path.join(phome, 'mom_priv', 'prologue')
+        # epilog = os.path.join(phome, 'mom_priv', 'epilogue')
+        prolog = "\"C:\Program Files (x86)\PBS\home\mom_priv\prologue\""
+        epilog = "\"C:\Program Files (x86)\PBS\home\mom_priv\epilogue\""
+        cmd = ['del /F /Q'] + [epilog]
+        ret = self.du.run_cmd(self.hostname, cmd, sudo=True)
+        # ret = self.du.rm(self.hostname, epilog, force=True,
+                        #  sudo=True, logerr=False)
         if ret:
-            ret = self.du.rm(self.hostname, prolog, force=True,
-                             sudo=True, logerr=False)
+            cmd = ['del /F /Q'] + [prolog]
+            ret = self.du.run_cmd(self.hostname, cmd, sudo=True)
+            # ret = self.du.rm(self.hostname, prolog, force=True,
+                            #  sudo=True, logerr=False)
         if not ret:
             self.logger.error('problem deleting prologue/epilogue')
             # we don't bail because the problem may be that files did not
@@ -1011,7 +1187,7 @@ class PBSInitMoM(PBSInitServices):
         if self.hostname is None:
             self.hostname = socket.gethostname()
         # self.dflt_conf_file = os.environ.get('PBS_CONF_FILE', 'C:\Program Files (x86)\PBS\pbs.conf')
-        self.dflt_conf_file = "C:\Program Files (x86)\PBS\pbs.conf"
+        self.dflt_conf_file = "\"C:\Program Files (x86)\PBS\pbs.conf\""
         self.conf_file = conf
         self.du = DshUtils()
         # self.is_linux = sys.platform.startswith('linux')
@@ -1157,14 +1333,9 @@ class PBSInitMoM(PBSInitServices):
                 'PBS_START_SCHED': 0,
                 'PBS_START_COMM': 0
             }
-            if daemon == 'server' and conf.get('PBS_START_SERVER', 0) != 0:
-                dconf['PBS_START_SERVER'] = 1
-            elif daemon == 'mom' and conf.get('PBS_START_MOM', 0) != 0:
+
+            if daemon == 'mom' and conf.get('PBS_START_MOM', 0) != 0:
                 dconf['PBS_START_MOM'] = 1
-            elif daemon == 'sched' and conf.get('PBS_START_SCHED', 0) != 0:
-                dconf['PBS_START_SCHED'] = 1
-            elif daemon == 'comm' and conf.get('PBS_START_COMM', 0) != 0:
-                dconf['PBS_START_COMM'] = 1
             for k, v in dconf.items():
                 init_cmd += ["%s=%s" % (k, str(v))]
             _as = True
@@ -1176,21 +1347,9 @@ class PBSInitMoM(PBSInitServices):
             else:
                 _as = False
             conf = self.du.parse_pbs_config(hostname, conf_file)
-        if (init_script is None) or (not init_script.startswith('/')):
-            if 'PBS_EXEC' not in conf:
-                msg = 'Missing PBS_EXEC setting in pbs config'
-                raise PbsInitServicesError(rc=1, rv=False, msg=msg)
-            if init_script is None:
-                init_script = os.path.join(conf['PBS_EXEC'], 'libexec',
-                                           'pbs_init.d')
-            else:
-                init_script = os.path.join(conf['PBS_EXEC'], 'etc',
-                                           init_script)
-            if not self.du.isfile(hostname, path=init_script, sudo=True):
-                # Could be Type 3 installation where we will not have
-                # PBS_EXEC/libexec/pbs_init.d
-                return []
-        init_cmd += [init_script, op]
+
+        init_script = "net"
+        init_cmd += [init_script, op, "pbs_mom"]
         msg = 'running init script to ' + op + ' pbs'
         if daemon is not None and daemon != 'all':
             msg += ' ' + daemon
@@ -1206,3 +1365,30 @@ class PBSInitMoM(PBSInitServices):
                                        msg='\n'.join(ret['err']))
         else:
             return ret
+
+
+class ProcInfo(object):
+
+    """
+    Process information reports ``PID``, ``RSS``, ``VSZ``, Command
+    and Time at which process information is collected
+    """
+
+    def __init__(self, name=None, pid=None):
+        self.name = name
+        self.pid = pid
+        self.rss = None
+        self.vsz = None
+        self.pcpu = None
+        self.pmem = None
+        self.size = None
+        self.cputime = None
+        self.time = time.time()
+        self.command = None
+
+    def __str__(self):
+        return "%s pid: %s rss: %s vsz: %s pcpu: %s pmem: %s \
+               size: %s cputime: %s command: %s" % \
+               (self.name, str(self.pid), str(self.rss), str(self.vsz),
+                str(self.pcpu), str(self.pmem), str(self.size),
+                str(self.cputime), self.command)

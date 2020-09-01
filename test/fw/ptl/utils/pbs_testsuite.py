@@ -491,7 +491,7 @@ class PBSTestSuite(unittest.TestCase):
             self.revert_servers()
             self.revert_pbsconf()
             self.revert_schedulers()
-            # self.revert_moms()
+            self.revert_moms()
 
         # turn off opt_backfill_fuzzy to avoid unexpected calendaring behavior
         # as many tests assume that scheduler will simulate each event
@@ -1295,6 +1295,7 @@ class PBSTestSuite(unittest.TestCase):
                     new_pbsconf["PBS_PUBLIC_HOST_NAME"] = localhost
                     restart_pbs = True
 
+            new_pbsconf["PBS_SUPPORTED_AUTH_METHODS"] = "pwd,resvport"
             # Check if existing pbs.conf has more/less entries than the
             # default list
             if len(pbs_conf_val) != len(new_pbsconf):
@@ -1520,7 +1521,7 @@ class PBSTestSuite(unittest.TestCase):
             mom.start()
             msg = 'Failed to restart mom ' + mom.hostname
             self.assertTrue(mom.isUp(), msg)
-        mom.pbs_version()
+        # mom.pbs_version()
         restart = False
         enabled_cpuset = False
         if ((self.revert_to_defaults and self.mom_revert_to_defaults and
@@ -1535,7 +1536,7 @@ class PBSTestSuite(unittest.TestCase):
             conf = mom.dflt_config
             if 'clienthost' in self.conf:
                 conf.update({'$clienthost': self.conf['clienthost']})
-            mom.apply_config(conf=conf, hup=False, restart=False)
+            # mom.apply_config(conf=conf, hup=False, restart=False)
             if mom.is_cpuset_mom():
                 enabled_cpuset = True
         if restart:
