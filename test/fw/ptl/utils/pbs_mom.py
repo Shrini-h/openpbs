@@ -313,7 +313,7 @@ class WinMoM(MoM):
         if ret['rc'] != 0:
             return False
         return True
-    
+
     def create_temp_file(self, hostname=None, suffix='', prefix='PtlPbs',
                          dirname=None, text=False, asuser=None, body=None):
         """
@@ -387,9 +387,9 @@ class WinMoM(MoM):
                           preserve_permission=False)
             # remove original temp file
             os.unlink(tmpfile)
-            #self.tmpfilelist.append(tmpfile2)
+            # self.tmpfilelist.append(tmpfile2)
             return tmpfile2
-        #self.tmpfilelist.append(tmpfile)
+        # self.tmpfilelist.append(tmpfile)
         return destination
 
     def _get_proc_info(self, hostname=None, name=None,
@@ -498,7 +498,7 @@ class WinMoM(MoM):
             pid = None
         self.logger.info("---------Inside _get_pid; pid: %s" %(str(pid)))
         return pid
-    
+
     def _validate_pid(self):
         """
         Get pid and validate
@@ -512,7 +512,7 @@ class WinMoM(MoM):
                 return pid
             time.sleep(1)
         return None
-    
+
     def get_stagein_cmd(self, execution_path=None, storage_host=None, storage_path=None, asuser=None):
         """
         """
@@ -523,14 +523,14 @@ class WinMoM(MoM):
             fn = self.create_temp_file(hostname=self.server.hostname, asuser=asuser)
         else:
             fn = storage_path
-        
+
         if execution_path is None:
             fn1 = "\"C:\\Users\\saksham\\PtlPbsStagein\""
-        
+
         cmd = '%s@%s:%s' % (fn1, storage_host, fn)
         self.logger.info("----Inside get_stagein_cmd; cmd: %s" %(cmd))
         return cmd
-    
+
     def get_stageout_cmd(self, execution_path=None, execution_host=None, storage_host=None, storage_path=None, asuser=None):
         """
         """
@@ -541,11 +541,11 @@ class WinMoM(MoM):
             fn = self.create_temp_file(hostname=self.server.hostname, asuser=asuser)
         else:
             fn = storage_path
-        
+
         if execution_path is None:
             fn1 = self.create_temp_file(hostname=execution_host)
             self.logger.info("----Inside get_stageout_cmd; fn1: %s" %(fn1))
-        
+
         cmd = '%s@%s:%s' % (fn1, storage_host, fn)
         self.logger.info("----Inside get_stageout_cmd; cmd: %s" %(cmd))
         return cmd
@@ -560,30 +560,30 @@ class WinMoM(MoM):
         """
         if hostname is None:
             hostname = self.hostname
-        
+
         if job_id is None:
             return None
-        
-        printjob = self.path_separator.join([self.mom.pbs_conf['PBS_EXEC'], 'bin',
+
+        printjob = self.path_separator.join([self.pbs_conf['PBS_EXEC'], 'bin',
                                 'printjob_host'])
-        jbfile = self.path_separator.join([self.mom.pbs_conf['PBS_HOME'], 'mom_priv',
+        jbfile = self.path_separator.join([self.pbs_conf['PBS_HOME'], 'mom_priv',
                              'jobs', job_id + '.JB'])
         printjob = '"' + printjob + '"'
-        jbfile = '"' + printjob + '"'
+        jbfile = '"' + jbfile + '"'
         ret = self.du.run_cmd(hostname, cmd=[printjob, jbfile])
         return ret
-    
+
     def check_suspended_state(self, hostname=None, pid=None):
         """
         """
 
         if hostname is None:
             hostname = self.hostname
-        
+
         if pid is None:
             self.logger.error("Could not get pid to check the state")
             return False
-        
+
         cmd = 'powershell -command \"(Get-Process -Id ' + pid + ').Threads | select WaitReason | Format-List\"'
         ret = self.du.run_cmd(hostname, cmd=cmd)
         if ret['rc'] == 0:
@@ -1078,6 +1078,145 @@ class WinMoM(MoM):
                 vs.append(v['id'])
         if len(vs) > 0:
             self.server.manager(MGR_CMD_DELETE, VNODE, id=vs)
+
+    def _get_dflt_pbsconfval(self, conf, svr_hostname, hosttype, hostobj):
+        """
+        Helper function to revert_pbsconf, tries to determine and return
+        default value for the pbs.conf variable given
+
+        :param conf: the pbs.conf variable
+        :type conf: str
+        :param svr_hostname: hostname of the server host
+        :type svr_hostname: str
+        :param hosttype: type of host being reverted
+        :type hosttype: str
+        :param hostobj: PTL object associated with the host
+        :type hostobj: PBSService
+
+        :return default value of the pbs.conf variable if it can be determined
+        as a string, otherwise None
+        """
+        if conf == "PBS_SERVER":
+            return svr_hostname
+        elif conf == "PBS_START_SCHED":
+            return "0"
+        elif conf == "PBS_START_COMM":
+            return "0"
+        elif conf == "PBS_START_SERVER":
+            return "0"
+        elif conf == "PBS_START_MOM":
+            return "1"
+        elif conf == "PBS_CORE_LIMIT":
+            return "unlimited"
+        elif conf == "PBS_SCP":
+            scppath = self.du.which(hostobj.hostname, "scp")
+            if scppath != "scp":
+                return scppath
+        elif conf == "PBS_LOG_HIGHRES_TIMESTAMP":
+            return "1"
+        elif conf == "PBS_PUBLIC_HOST_NAME":
+            return None
+        elif conf == "PBS_DAEMON_SERVICE_USER":
+            # Only set if scheduler user is not default
+            if DAEMON_SERVICE_USER.name == 'root':
+                return None
+            else:
+                return DAEMON_SERVICE_USER.name
+
+        return None
+
+    def revert_mom_pbs_conf(self, primary_server, vals_to_set):
+        """
+        Helper function to revert_pbsconf to revert all mom daemons' pbs.conf
+        :param primary_server: object of the primary PBS server
+        :type primary_server: PBSService
+        :param vals_to_set: dict of pbs.conf values to set
+        :type vals_to_set: dict
+        """
+        '''svr_hostnames = [svr.hostname for svr in self.servers.values()]
+        
+        #for mom in moms.values():
+        if self.hostname in svr_hostnames:
+            return'''
+
+        new_pbsconf = dict(vals_to_set)
+        restart_mom = False
+        # pfile = "C:\\Users\\pbsadmin\\PBS\\pbs.conf"
+        # pbs_conf_val = self.parse_mom_file(self.hostname, pfile)
+        if self.pbs_conf:
+            pbs_conf_val = self.pbs_conf
+        self.logger.info("----Inside revert_mom_pbs_conf; pbs_conf_val:%s" %(pbs_conf_val))
+        if not pbs_conf_val:
+            raise ValueError("Could not parse pbs.conf on host %s" %
+                             (self.hostname))
+
+        # to start with, set all keys in new_pbsconf with values from the
+        # existing pbs.conf
+        keys_to_delete = []
+        for conf in new_pbsconf:
+            if conf in pbs_conf_val:
+                new_pbsconf[conf] = pbs_conf_val[conf]
+            else:
+                # existing pbs.conf doesn't have a default variable set
+                # Try to determine the default
+                val = self._get_dflt_pbsconfval(conf,
+                                                primary_server.hostname,
+                                                "mom", self)
+                if val is None:
+                    self.logger.error("Couldn't revert %s in pbs.conf"
+                                      " to its default value" %
+                                      (conf))
+                    keys_to_delete.append(conf)
+                else:
+                    new_pbsconf[conf] = val
+
+        for key in keys_to_delete:
+            del(new_pbsconf[key])
+
+        # Set the mom start bit to 1
+        if (new_pbsconf["PBS_START_MOM"] != "1"):
+            new_pbsconf["PBS_START_MOM"] = "1"
+            restart_mom = True
+
+        # Set PBS_CORE_LIMIT, PBS_SCP and PBS_SERVER
+        if new_pbsconf["PBS_CORE_LIMIT"] != "unlimited":
+            new_pbsconf["PBS_CORE_LIMIT"] = "unlimited"
+            restart_mom = True
+        if new_pbsconf["PBS_SERVER"] != primary_server.hostname:
+            new_pbsconf["PBS_SERVER"] = primary_server.hostname
+            restart_mom = True
+        if "PBS_SCP" not in new_pbsconf:
+            scppath = "scp.exe"
+            if scppath != "scp":
+                new_pbsconf["PBS_SCP"] = "scp.exe"
+                restart_mom = True
+        if new_pbsconf["PBS_LOG_HIGHRES_TIMESTAMP"] != "1":
+            new_pbsconf["PBS_LOG_HIGHRES_TIMESTAMP"] = "1"
+            restart_mom = True
+        if "PBS_AUTH_METHOD" not in new_pbsconf or new_pbsconf["PBS_AUTH_METHOD"] != "pwd":
+            new_pbsconf["PBS_AUTH_METHOD"] = "pwd"
+
+
+        # Check if existing pbs.conf has more/less entries than the
+        # default list
+        if len(pbs_conf_val) != len(new_pbsconf):
+            restart_mom = True
+        # Check if existing pbs.conf has correct ownership
+        #dest = self.du.get_pbs_conf_file(self.hostname)
+        #(cf_uid, cf_gid) = (os.stat(dest).st_uid, os.stat(dest).st_gid)
+        #if cf_uid != 0 or cf_gid > 10:
+        
+        # Setting this to False for now. We might remove this whole function 
+        restart_mom = False
+        self.logger.info("----Inside revert_mom_pbs_conf; new_pbsconf`:%s" %(new_pbsconf))
+        if restart_mom:
+            self.du.set_pbs_config(self.hostname, fin=self.pbs_conf_file, confs=new_pbsconf,
+                                   append=False)
+            self.pbs_conf = new_pbsconf
+            self.logger.info("----Inside revert_mom_pbs_conf; self.pbs_conf:%s" %(self.pbs_conf))
+            self.pi.initd(self.hostname, "restart", daemon="mom")
+            if not self.isUp():
+                self.fail("Mom is not up")
 
     def revert_to_defaults(self, delvnodedefs=True):
         """

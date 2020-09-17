@@ -39,7 +39,6 @@
 
 
 from ptl.utils.pbs_testsuite import *
-TEST_USER='saksham'
 
 @tags('smoke')
 class SmokeTest(PBSTestSuite):
@@ -82,8 +81,9 @@ class SmokeTest(PBSTestSuite):
         self.server.manager(MGR_CMD_SET, NODE, a, id=self.mom.shortname)
         r = Reservation(TEST_USER)
         now = int(time.time())
+        r_start_time = now + 30
         a = {'Resource_List.select': '1:ncpus=4',
-             'reserve_start': now + 10,
+             'reserve_start': r_start_time,
              'reserve_end': now + 110}
         r.set_attributes(a)
         rid = self.server.submit(r)
@@ -102,8 +102,10 @@ class SmokeTest(PBSTestSuite):
         j2 = Job(TEST_USER, attrs=a)
         jid2 = self.server.submit(j2)
 
+        offset = r_start_time - int(time.time())
         a = {'reserve_state': (MATCH_RE, "RESV_RUNNING|5")}
-        self.server.expect(RESV, a, id=rid, interval=1)
+        self.server.expect(RESV, a, id=rid, interval=1,
+                           offset=offset)
         self.server.expect(JOB, {'job_state': 'R'}, jid1)
         self.server.expect(JOB, {'job_state': 'B'}, jid2)
 
@@ -347,7 +349,6 @@ class SmokeTest(PBSTestSuite):
         j = Job(TEST_USER, a)
         j.set_sleep_time(15)
         mom = self.moms.values()[0].shortname
-        self.logger.info("-------Inside test_finished_jobs; mom=%s------" %(mom))
         j.create_eatcpu_job(15, mom)
         jid = self.server.submit(j)
         self.server.expect(JOB, {'job_state': 'F'}, extend='x', offset=15,
@@ -465,7 +466,7 @@ class SmokeTest(PBSTestSuite):
         self.server.create_vnodes('vnode', a, 4, self.mom)
         a = {'Resource_List.select': '1:ncpus=4'}
         for _ in range(10):
-            j = Job(TEST_USER, a)
+            j = Job(TEST_USER1, a)
             self.server.submit(j)
         a = {'job_state=R': 4}
         self.server.expect(JOB, a)
@@ -602,7 +603,7 @@ class SmokeTest(PBSTestSuite):
         stagein_cmd = self.mom.get_stagein_cmd(storage_host=self.server.hostname, asuser=str(TEST_USER))
         a = {ATTR_stagein: stagein_cmd}
         j = Job(TEST_USER, a)
-        j.set_sleep_time(20)
+        j.set_sleep_time(2)
         jid = self.server.submit(j)
         self.server.expect(JOB, 'queue', op=UNSET, id=jid, offset=2)
         #a = {ATTR_stageout: fn + '@' + self.server.hostname + ':' + fn + '2'}
@@ -970,16 +971,16 @@ class SmokeTest(PBSTestSuite):
         self.server.manager(MGR_CMD_SET, SERVER, {'scheduling': 'False'})
         a = {'Resource_List.select': '1:ncpus=1:mem=300kb',
              'Resource_List.walltime': 4}
-        J1 = Job(TEST_USER, attrs=a)
+        J1 = Job(TEST_USER1, attrs=a)
         a = {'Resource_List.select': '1:ncpus=1:mem=350kb',
              'Resource_List.walltime': 4}
-        J2 = Job(TEST_USER, attrs=a)
+        J2 = Job(TEST_USER1, attrs=a)
         a = {'Resource_List.select': '1:ncpus=1:mem=380kb',
              'Resource_List.walltime': 4}
-        J3 = Job(TEST_USER, attrs=a)
+        J3 = Job(TEST_USER1, attrs=a)
         a = {'Resource_List.select': '1:ncpus=1:mem=440kb',
              'Resource_List.walltime': 4}
-        J4 = Job(TEST_USER, attrs=a)
+        J4 = Job(TEST_USER1, attrs=a)
         j1id = self.server.submit(J1)
         j2id = self.server.submit(J2)
         j3id = self.server.submit(J3)
@@ -987,13 +988,13 @@ class SmokeTest(PBSTestSuite):
         self.server.manager(MGR_CMD_SET, SERVER, {'scheduling': 'True'})
         rv = self.server.expect(SERVER, {'server_state': 'Scheduling'}, op=NE)
         self.logger.info("Checking the job state of " + j4id)
-        self.server.expect(JOB, {'job_state': 'R'}, id=j4id, max_attempts=60,
+        self.server.expect(JOB, {'job_state': 'R'}, id=j4id, max_attempts=30,
                            interval=2)
-        self.server.expect(JOB, {'job_state': 'Q'}, id=j3id, max_attempts=60,
+        self.server.expect(JOB, {'job_state': 'Q'}, id=j3id, max_attempts=30,
                            interval=2)
-        self.server.expect(JOB, {'job_state': 'Q'}, id=j2id, max_attempts=60,
+        self.server.expect(JOB, {'job_state': 'Q'}, id=j2id, max_attempts=30,
                            interval=2)
-        self.server.expect(JOB, {'job_state': 'Q'}, id=j1id, max_attempts=60,
+        self.server.expect(JOB, {'job_state': 'Q'}, id=j1id, max_attempts=30,
                            interval=2)
         msg = "Checking the job state of %s, runs after %s is deleted" % (j3id,
                                                                           j4id)
