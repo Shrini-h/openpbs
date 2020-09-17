@@ -40,7 +40,7 @@
 import ptl
 import os
 import logging
-import importlib
+import time
 
 from ptl.utils._pbs_mom import MoM
 from ptl.utils.pbs_dshutils import DshUtils
@@ -98,6 +98,8 @@ class WinMoM(MoM):
 
     def __init__(self, name=None, attrs={}, pbsconf_file=None, snapmap={},
                  snap=None, server=None, db_access=None):
+        
+        self.path_separator = '\\'
         if server is not None:
             self.server = server
             if snap is None and self.server.snap is not None:
@@ -109,18 +111,37 @@ class WinMoM(MoM):
                                  db_access=db_access, snap=snap,
                                  snapmap=snapmap)
 
-        PBSService.__init__(self, name, attrs, self.dflt_attributes,
+        dflt_conf = "C:\Program Files (x86)\PBS\pbs.conf"
+
+        pc = ('"import os;print([False, os.environ[\'PBS_CONF_FILE\']]'
+              '[\'PBS_CONF_FILE\' in os.environ])"')
+        pyexec = 'python'
+        cmd = [pyexec, '-c', pc]
+        self.du = DshUtils()
+        ret = self.du.run_cmd(name, cmd, logerr=False)
+        if ((ret['rc'] == 0) and (len(ret['out']) > 0) and
+                (ret['out'][0] != 'False')):
+            dflt_conf = ret['out'][0]
+            self.logger.info("-----Inside Mom's _init_; dflt_conf:%s" %(dflt_conf))
+        pbsconf_file = dflt_conf
+        self.logger.info("-----Inside Mom's _init_; pbsconf_file:%s" %(pbsconf_file))
+
+        # PBSService.__init__(self, name, attrs, self.dflt_attributes,
+                            # pbsconf_file, snap=snap, snapmap=snapmap)
+        self.pbsservice_init(name, attrs, self.dflt_attributes,
                             pbsconf_file, snap=snap, snapmap=snapmap)
+
         _m = ['mom ', self.shortname]
         if pbsconf_file is not None:
             _m += ['@', pbsconf_file]
         _m += [': ']
         self.logprefix = "".join(_m)
+        
         # Windows Implementation of InitServices
         self.pi = PBSInitMoM(hostname=self.hostname,
                                   conf=self.pbs_conf_file)
-        self.configd = os.path.join(self.pbs_conf['PBS_HOME'], 'mom_priv',
-                                    'config.d')
+        self.configd = self.path_separator.join([self.pbs_conf['PBS_HOME'], 'mom_priv',
+                                    'config.d'])
         self.config = {}
         self.dflt_config = {'$clienthost': self.server.hostname}
         self.version = None
@@ -132,12 +153,244 @@ class WinMoM(MoM):
         self.revert_to_default = True
         self.du = DshUtils()
         self.processes = {}
+        self.sleep_cmd = 'pbs_sleep'
 
     def __del__(self):
         del self.__dict__
+    
+    def pbsservice_init(self, name=None, attrs=None, defaults=None, pbsconf_file=None,
+                        snapmap=None, snap=None):
+        if attrs is None:
+            attrs = {}
+        if defaults is None:
+            defaults = {}
+        if name is None:
+            self.hostname = socket.gethostname()
+        else:
+            self.hostname = name
+        
+
+        self.fqdn = self.hostname
+        self.shortname = self.hostname.split('.')[0]
+        self.platform = self.du.get_platform()
+
+        self.logutils = None
+        self.logfile = None
+        self.acctlogfile = None
+        self.pbs_conf = {}
+        self.pbs_env = {}
+        # setting _is_local to False by default as MoM will
+        # be a different machine always
+        self._is_local = False
+        self.launcher = None
+        self.dyn_created_files = []
+        self.saved_config = {}
+
+        PBSObject.__init__(self, name, attrs, defaults)
+
+        self.pbs_conf_file = pbsconf_file
+
+        if self.pbs_conf_file == '/etc/pbs.conf':
+            self.default_pbs_conf = True
+        elif (('PBS_CONF_FILE' not in os.environ) or
+              (os.environ['PBS_CONF_FILE'] != self.pbs_conf_file)):
+            self.default_pbs_conf = False
+        else:
+            self.default_pbs_conf = True
+
+        # default pbs_server_name to hostname, it will get set again once the
+        # config file is processed
+        self.pbs_server_name = self.hostname
+
+        rv = self.print_file(self.hostname, self.pbs_conf_file)
+        # implementation of _parse_file
+        try:
+            props = {}
+            for l in rv['out']:
+                if l.find('=') != -1 and l[0] != '#':
+                    c = l.split('=')
+                    props[c[0]] = c[1].strip()
+        except BaseException:
+            self.logger.error('error parsing file ' + str(file))
+            self.logger.error(traceback.print_exc())
+        self.pbs_conf = props
+
+        if self.pbs_conf is None or len(self.pbs_conf) == 0:
+            self.pbs_conf = {'PBS_HOME': "", 'PBS_EXEC': ""}
+        else:
+            ef = self.path_separator.join([self.pbs_conf['PBS_HOME'], 'pbs_environment'])
+            # self.pbs_env = self.du.parse_pbs_environment(self.hostname, ef)
+            self.pbs_server_name = self.du.get_pbs_server_name(
+                self.pbs_conf)
+
+        # Implement init_logfile_path 
+        # Initialize path to log files for Mom
+        # This will want the date for Server and MoM machine to be synced
+        # No need for accounting log as it is part of server
+        if self.pbs_conf is not None and 'PBS_HOME' in self.pbs_conf:
+            tm = time.strftime("%Y%m%d", time.localtime())
+            self.logfile = self.path_separator.join([self.pbs_conf['PBS_HOME'], 'mom_logs', tm])
 
     def _init_processes(self):
         self.processes = {}
+    
+    def print_file(self, hostname=None, path=None):
+        """
+        """
+        if hostname is None:
+            hostname = self.hostname
+        if path is None:
+            self.logger.info("No path provided to print the file")
+            return None
+        path = '"' + path + '"'
+        cmd = ['type', path]
+        self.logger.info("---------Inside print_file; cmd: %s" %(cmd))
+        rv = self.du.run_cmd(self.hostname, cmd=cmd)
+        return rv
+
+        
+    def rm(self, hostname=None, path=None, sudo=False, runas=None,
+           recursive=False, force=False, cwd=None, logerr=True,
+           as_script=False, level=logging.INFOCLI2):
+        """
+        Generic function of rm with remote host support
+
+        :param hostname: hostname (default current host)
+        :type hostname: str or None
+        :param path: the path to the files or directories to remove
+                     for more than one files or directories pass as
+                     list
+        :type path: str or None
+        :param sudo: whether to remove files or directories as root
+                     or not.Defaults to False
+        :type sudo: boolean
+        :param runas: remove files or directories as given user
+                      Defaults to calling user
+        :param recursive: remove files or directories and their
+                          contents recursively
+        :type recursive: boolean
+        :param force: force remove files or directories
+        :type force: boolean
+        :param cwd: working directory on local host from which
+                    command is run
+        :param logerr: whether to log error messages or not.
+                       Defaults to True.
+        :type logerr: boolean
+        :param as_script: if True, run the rm in a script created
+                          as a temporary file that gets deleted after
+                          being run. This is used mainly to handle
+                          wildcard in path list. Defaults to False.
+        :type as_script: boolean
+        :param level: logging level, defaults to INFOCLI2
+        :returns: True on success otherwise False
+        """
+        if (path is None) or (len(path) == 0):
+            return True
+
+        cmd = ['del /Q']
+        if recursive:
+            cmd += ['/S']
+        if force:
+            cmd += ['/F']
+
+        if isinstance(path, list):
+            for p in path:
+                if p == '/':
+                    msg = 'encountered a dangerous package path ' + p
+                    self.logger.error(msg)
+                    return False
+            cmd += path
+        else:
+            if path == '/':
+                msg = 'encountered a dangerous package path ' + path
+                self.logger.error(msg)
+                return False
+            cmd += [path]
+
+        ret = self.du.run_cmd(hostname, cmd=cmd, sudo=sudo, logerr=logerr,
+                           runas=runas, cwd=cwd, level=level,
+                           as_script=as_script)
+        if ret['rc'] != 0:
+            return False
+        return True
+    
+    def create_temp_file(self, hostname=None, suffix='', prefix='PtlPbs',
+                         dirname=None, text=False, asuser=None, body=None):
+        """
+        Create a temp file by calling tempfile.mkstemp
+
+        :param hostname: the hostname on which to query tempdir from
+        :type hostname: str or None
+        :param suffix: the file name will end with this suffix
+        :type suffix: str
+        :param prefix: the file name will begin with this prefix
+        :type prefix: str
+        :param dirname: the file will be created in this directory
+        :type dirname: str or None
+        :param text: the file is opened in text mode is this is true
+                     else in binary mode
+        :type text: boolean
+        :param asuser: Optional username or uid of temp file owner
+        :type asuser: str or None
+        :param body: Optional content to write to the temporary file
+        :type body: str or None
+        :param level: logging level, defaults to INFOCLI2
+        :type level: int
+        """
+
+        # create a temp file as current user
+        (fd, tmpfile) = tempfile.mkstemp(suffix, prefix, dirname, text)
+
+        # write user provided contents to file
+        if body is not None:
+            if isinstance(body, list):
+                os.write(fd, "\n".join(body).encode())
+            else:
+                os.write(fd, body.encode())
+        os.close(fd)
+
+        if not hostname and asuser:
+            asuser = PbsUser.get_user(asuser)
+            if asuser.host:
+                hostname = asuser.host
+
+        # if temp file to be created on remote host
+        if not self.du.is_localhost(hostname):
+            if asuser is not None:
+                # by default mkstemp creates file with 0600 permission
+                # to create file as different user first change the file
+                # permission to 0644 so that other user has read permission
+                self.du.chmod(path=tmpfile, mode=0o644)
+                # copy temp file created  on local host to remote host
+                # as different user
+                self.du.run_copy(hostname, src=tmpfile, dest=tmpfile,
+                              runas=asuser, preserve_permission=False)
+            else:
+                # copy temp file created on localhost to remote as current user
+                destination = "\"C:\\Users\\saksham\\PtlPbs\""
+                self.du.run_copy(hostname, src=tmpfile, dest=destination,
+                              preserve_permission=False)
+                # remove local temp file
+                os.unlink(tmpfile)
+        if asuser is not None:
+            # by default mkstemp creates file with 0600 permission
+            # to create file as different user first change the file
+            # permission to 0644 so that other user has read permission
+            self.du.chmod(hostname, tmpfile, mode=0o644)
+            # since we need to create as differnt user than current user
+            # create a temp file just to get temp file name with absolute path
+            (_, tmpfile2) = tempfile.mkstemp(suffix, prefix, dirname, text)
+            # remove the newly created temp file
+            os.unlink(tmpfile2)
+            # copy the orginal temp as new temp file
+            self.du.run_copy(hostname, src=tmpfile, dest=tmpfile2, runas=asuser,
+                          preserve_permission=False)
+            # remove original temp file
+            os.unlink(tmpfile)
+            #self.tmpfilelist.append(tmpfile2)
+            return tmpfile2
+        #self.tmpfilelist.append(tmpfile)
+        return destination
 
     def _get_proc_info(self, hostname=None, name=None,
                        pid=None, regexp=False):
@@ -210,13 +463,12 @@ class WinMoM(MoM):
         self._init_processes()
         return self._get_proc_info(hostname, name, pid, regexp)
 
-    def _all_instance_pids(self, inst):
+    def _all_instance_pids(self):
         """
         Return a list of all ``PIDS`` that match the
         instance name or None.
         """
         cmd = 'pbs_mom'
-        self.logger.info("---------Inside _all_instance_pids of pbs_mom")
         self.get_proc_info(self.hostname, ".*" + cmd + ".*",
                            regexp=True)
         _procs = self.processes.values()
@@ -238,26 +490,117 @@ class WinMoM(MoM):
         the PID of the last running instance can be retrieved
         with ``_get_pid`` but not with ``_all_instance_pids``
         """
-        priv = 'mom_priv'
-        lock = 'mom.lock'
-        #path = os.path.join(self.pbs_conf['PBS_HOME'], priv, lock)
-        path = "\"C:\Program Files (x86)\PBS\home\mom_priv\mom.lock\""
-        cmd = ['type', path]
-        self.logger.info("---------Inside _get_pid; cmd: %s" %(str(cmd)))
-        rv = self.du.run_cmd(self.hostname, cmd=cmd)
+        path = self.path_separator.join([self.pbs_conf['PBS_HOME'], 'mom_priv', 'mom.lock'])
+        rv = self.print_file(self.hostname, path)
         if ((rv['rc'] == 0) and (len(rv['out']) > 0)):
             pid = rv['out'][0].strip()
         else:
             pid = None
         self.logger.info("---------Inside _get_pid; pid: %s" %(str(pid)))
         return pid
+    
+    def _validate_pid(self):
+        """
+        Get pid and validate
+        :param inst: inst to update pid
+        :type inst: object
+        """
+        for i in range(30):
+            live_pids = self._all_instance_pids()
+            pid = self._get_pid()
+            if live_pids is not None and pid in live_pids:
+                return pid
+            time.sleep(1)
+        return None
+    
+    def get_stagein_cmd(self, execution_path=None, storage_host=None, storage_path=None, asuser=None):
+        """
+        """
+        if storage_host is None:
+            storage_host = self.server.hostname
+
+        if storage_path is None:
+            fn = self.create_temp_file(hostname=self.server.hostname, asuser=asuser)
+        else:
+            fn = storage_path
+        
+        if execution_path is None:
+            fn1 = "\"C:\\Users\\saksham\\PtlPbsStagein\""
+        
+        cmd = '%s@%s:%s' % (fn1, storage_host, fn)
+        self.logger.info("----Inside get_stagein_cmd; cmd: %s" %(cmd))
+        return cmd
+    
+    def get_stageout_cmd(self, execution_path=None, execution_host=None, storage_host=None, storage_path=None, asuser=None):
+        """
+        """
+        if storage_host is None:
+            storage_host = self.server.hostname
+
+        if storage_path is None:
+            fn = self.create_temp_file(hostname=self.server.hostname, asuser=asuser)
+        else:
+            fn = storage_path
+        
+        if execution_path is None:
+            fn1 = self.create_temp_file(hostname=execution_host)
+            self.logger.info("----Inside get_stageout_cmd; fn1: %s" %(fn1))
+        
+        cmd = '%s@%s:%s' % (fn1, storage_host, fn)
+        self.logger.info("----Inside get_stageout_cmd; cmd: %s" %(cmd))
+        return cmd
+
+    def run_printjob(self, hostname=None, job_id=None):
+        """
+        Run the printjob command for the given job id
+        :param hostname: mom hostname
+        :type hostname: string
+        :param job_id: job's id for which to run printjob cmd
+        :type job_id: string
+        """
+        if hostname is None:
+            hostname = self.hostname
+        
+        if job_id is None:
+            return None
+        
+        printjob = self.path_separator.join([self.mom.pbs_conf['PBS_EXEC'], 'bin',
+                                'printjob_host'])
+        jbfile = self.path_separator.join([self.mom.pbs_conf['PBS_HOME'], 'mom_priv',
+                             'jobs', job_id + '.JB'])
+        printjob = '"' + printjob + '"'
+        jbfile = '"' + printjob + '"'
+        ret = self.du.run_cmd(hostname, cmd=[printjob, jbfile])
+        return ret
+    
+    def check_suspended_state(self, hostname=None, pid=None):
+        """
+        """
+
+        if hostname is None:
+            hostname = self.hostname
+        
+        if pid is None:
+            self.logger.error("Could not get pid to check the state")
+            return False
+        
+        cmd = 'powershell -command \"(Get-Process -Id ' + pid + ').Threads | select WaitReason | Format-List\"'
+        ret = self.du.run_cmd(hostname, cmd=cmd)
+        if ret['rc'] == 0:
+            for rv in ret['out']:
+                self.logger.info("-----Inside check_suspended_state-----rv:%s" %(rv))
+                if rv.startswith('WaitReason :') and rv.split(':')[1] != ' Suspended':
+                    return False
+        else:
+            self.logger.error("Could not get process state from Mom")
+            return False
+        return True
 
     def _isUp(self, inst):
         """
         returns True if MoM service is up and False otherwise
         """
-        self.logger.info("---------Inside _isUp of pbs_mom")
-        live_pids = self._all_instance_pids(inst)
+        live_pids = self._all_instance_pids()
         pid = self._get_pid()
         if live_pids is not None and pid in live_pids:
             return True
@@ -268,7 +611,6 @@ class WinMoM(MoM):
         Check for PBS mom up
         """
         # Poll for few seconds to see if mom is up and node is free
-        self.logger.info("---------Inside isUp of pbs_mom")
         if max_attempts is None:
             max_attempts = self.ptl_conf['max_attempts']
         for _ in range(max_attempts):
@@ -308,7 +650,6 @@ class WinMoM(MoM):
         pid = self._get_pid()
 
         cmd = ['taskkill', '/F', 'PID']
-        self.logger.info("---------Inside _signal of pbs_mom")
         if procname is not None:
             pi = self.get_proc_info(self.hostname, procname)
             if pi is not None and pi.values() and list(pi.values())[0]:
@@ -316,8 +657,7 @@ class WinMoM(MoM):
                     cmd += [_p.pid]
                     if sig is '-HUP':
                         cmd += ['&', 'net start pbs_mom']
-                    ret = self.du.run_cmd(self.hostname, cmd,
-                                          sudo=True)
+                    ret = self.du.run_cmd(self.hostname, cmd)
                 return ret
 
         if pid is None:
@@ -326,7 +666,7 @@ class WinMoM(MoM):
         cmd += [pid]
         if sig is '-HUP':
             cmd += ['&', 'net start pbs_mom']
-        return self.du.run_cmd(self.hostname, cmd, sudo=True)
+        return self.du.run_cmd(self.hostname, cmd)
 
     def signal(self, sig):
         """
@@ -365,7 +705,7 @@ class WinMoM(MoM):
         else:
             try:
                 rv = self.pi.start_mom()
-                pid = self._validate_pid(self)
+                pid = self._validate_pid()
                 if pid is None:
                     raise PbsServiceError(rv=False, rc=-1,
                                           msg="Could not find PID")
@@ -400,7 +740,231 @@ class WinMoM(MoM):
                 return False
         return self.start()
 
-    def log_match(self, msg=None, id=None, n=50, tail=True, allmatch=False,
+    def log_lines(self, logtype, id=None, n=50, tail=True, starttime=None,
+                  endtime=None, host=None):
+        """
+        Return the last ``<n>`` lines of a PBS log file, which
+        can be one of ``server``, ``scheduler``, ``MoM``, or
+        ``tracejob``
+
+        :param logtype: The entity requested, an instance of a
+                        Scheduler, Server or MoM object, or the
+                        string 'tracejob' for tracejob
+        :type logtype: str or object
+        :param id: The id of the object to trace. Only used for
+                   tracejob
+        :param n: One of 'ALL' of the number of lines to
+                  process/display, defaults to 50.
+        :type n: str or int
+        :param tail: if True, parse log from the end to the start,
+                     otherwise parse from the start to the end.
+                     Defaults to True.
+        :type tail: bool
+        :param day: Optional day in ``YYYMMDD`` format. Defaults
+                    to current day
+        :type day: int
+        :param starttime: date timestamp to start matching
+        :param endtime: date timestamp to end matching
+        :param host: Hostname
+        :type host: str
+        :returns: Last ``<n>`` lines of logfile for ``Server``,
+                  ``Scheduler``, ``MoM or tracejob``
+        """
+        logval = None
+        lines = []
+        sudo = False
+        if endtime is None:
+            endtime = time.time()
+        if starttime is None:
+            starttime = self.ctime
+        if host is None:
+            host = self.hostname
+        try:
+            if logtype == 'tracejob':
+                if id is None:
+                    return None
+                cmd = [self.path_separator.join([
+                       self.pbs_conf['PBS_EXEC'],
+                       'bin',
+                       'tracejob'])]
+                cmd += [str(id)]
+                lines = self.du.run_cmd(host, cmd)['out']
+                if n != 'ALL':
+                    lines = lines[-n:]
+            else:
+                daystart = time.strftime("%Y%m%d", time.localtime(starttime))
+                dayend = time.strftime("%Y%m%d", time.localtime(endtime))
+                firstday_obj = datetime.datetime.strptime(daystart, '%Y%m%d')
+                lastday_obj = datetime.datetime.strptime(dayend, '%Y%m%d')
+                logval = 'mom_logs'
+                logdir = self.path_separator.join([self.pbs_conf['PBS_HOME'], logval])
+                while firstday_obj <= lastday_obj:
+                    day = firstday_obj.strftime("%Y%m%d")
+                    filename = self.path_separator.join([logdir, day])
+                    self.logger.info("-----Inside log_lines, filename=%s" %(filename))
+                    if n == 'ALL':
+                        day_lines = self.print_file(self.hostname, filename)['out']
+                        # day_lines = self.du.cat(
+                            # host, filename, sudo=sudo,
+                            # level=logging.DEBUG2)['out']
+                    else:
+                        if tail:
+                            cmd = ['/usr/bin/tail']
+                        else:
+                            cmd = ['/usr/bin/head']
+
+                        cmd += ['-n']
+                        cmd += [str(n), filename]
+                        day_lines = self.du.run_cmd(
+                            host, cmd, sudo=sudo,
+                            level=logging.DEBUG2)['out']
+                    lines.extend(day_lines)
+                    firstday_obj = firstday_obj + datetime.timedelta(days=1)
+                    if n == 'ALL':
+                        continue
+                    n = n - len(day_lines)
+                    if n <= 0:
+                        break
+        except (Exception, IOError, PtlLogMatchError):
+            self.logger.error('error in log_lines ')
+            self.logger.error(traceback.print_exc())
+            return None
+
+        return lines
+
+    def _log_match(self, logtype, msg, id=None, n=50, tail=True,
+                   allmatch=False, regexp=False, max_attempts=None,
+                   interval=None, starttime=None, endtime=None,
+                   level=logging.INFO, existence=True):
+        """
+        Match given ``msg`` in given ``n`` lines of log file
+
+        :param logtype: The entity requested, an instance of a
+                        Scheduler, Server, or MoM object, or the
+                        strings 'tracejob' for tracejob or
+                        'accounting' for accounting logs.
+        :type logtype: object
+        :param msg: log message to match, can be regex also when
+                    ``regexp`` is True
+        :type msg: str
+        :param id: The id of the object to trace. Only used for
+                   tracejob
+        :type id: str
+        :param n: 'ALL' or the number of lines to search through,
+                  defaults to 50
+        :type n: str or int
+        :param tail: If true (default), starts from the end of
+                     the file
+        :type tail: bool
+        :param allmatch: If True all matching lines out of then
+                         parsed are returned as a list. Defaults
+                         to False
+        :type allmatch: bool
+        :param regexp: If true msg is a Python regular expression.
+                       Defaults to False
+        :type regexp: bool
+        :param max_attempts: the number of attempts to make to find
+                             a matching entry
+        :type max_attempts: int
+        :param interval: the interval between attempts
+        :type interval: int
+        :param starttime: If set ignore matches that occur before
+                          specified time
+        :type starttime: float
+        :param endtime: If set ignore matches that occur after
+                        specified time
+        :type endtime: float
+        :param level: The logging level, defaults to INFO
+        :type level: int
+        :param existence: If True (default), check for existence of
+                        given msg, else check for non-existence of
+                        given msg.
+        :type existence: bool
+
+        :return: (x,y) where x is the matching line
+                 number and y the line itself. If allmatch is True,
+                 a list of tuples is returned.
+        :rtype: tuple
+        :raises PtlLogMatchError:
+                When ``existence`` is True and given
+                ``msg`` is not found in ``n`` line
+                Or
+                When ``existence`` is False and given
+                ``msg`` found in ``n`` line.
+
+        .. note:: The matching line number is relative to the record
+                  number, not the absolute line number in the file.
+        """
+        try:
+            from ptl.utils.pbs_logutils import PBSLogUtils
+        except:
+            _msg = 'error loading ptl.utils.pbs_logutils'
+            raise ImportError(_msg)
+
+        if self.logutils is None:
+            self.logutils = PBSLogUtils()
+        if max_attempts is None:
+            max_attempts = self.ptl_conf['max_attempts']
+        if interval is None:
+            interval = self.ptl_conf['attempt_interval']
+        rv = (None, None)
+        attempt = 1
+        lines = None
+        name = self._instance_to_servicename(logtype)
+        infomsg = (name + ' ' + self.shortname +
+                   ' log match: searching for "' + msg + '"')
+        if regexp:
+            infomsg += ' - using regular expression '
+        if allmatch:
+            infomsg += ' - on all matches '
+        if existence:
+            infomsg += ' - with existence'
+        else:
+            infomsg += ' - with non-existence'
+        attemptmsg = ' - No match'
+        while attempt <= max_attempts:
+            if attempt > 1:
+                attemptmsg = ' - attempt ' + str(attempt)
+            lines = self.log_lines(logtype, id, n=n, tail=tail,
+                                   starttime=starttime, endtime=endtime)
+            rv = self.logutils.match_msg(lines, msg, allmatch=allmatch,
+                                         regexp=regexp, starttime=starttime,
+                                         endtime=endtime)
+            if not existence:
+                if rv:
+                    _msg = infomsg + ' - but exists'
+                    #raise PtlLogMatchError(rc=1, rv=False, msg=_msg)
+                else:
+                    self.logger.log(level, infomsg + attemptmsg + '... OK')
+                    break
+            if rv:
+                self.logger.log(level, infomsg + '... OK')
+                break
+            else:
+                if n != 'ALL':
+                    if attempt > max_attempts:
+                        # We will do one last attempt to match in case the
+                        # number of lines that were provided did not capture
+                        # the start or end time of interest
+                        max_attempts += 1
+                    n = 'ALL'
+                self.logger.log(level, infomsg + attemptmsg)
+            attempt += 1
+            time.sleep(interval)
+        try:
+            # Depending on whether the hostname is local or remote and whether
+            # sudo privileges were required, lines returned by log_lines can be
+            # an open file descriptor, we close here but ignore errors in case
+            # any were raised for all irrelevant cases
+            lines.close()
+        except:
+            pass
+        if (rv is None and existence):
+            _msg = infomsg + attemptmsg
+            raise PtlLogMatchError(rc=1, rv=False, msg=_msg)
+        return rv
+
+    def log_match(self, msg=None, id=None, n='ALL', tail=True, allmatch=False,
                   regexp=False, max_attempts=None, interval=None,
                   starttime=None, endtime=None, level=logging.INFO,
                   existence=True):
@@ -469,9 +1033,10 @@ class WinMoM(MoM):
         if self.version:
             return self.version
 
-        exe = os.path.join(self.pbs_conf['PBS_EXEC'], 'sbin', 'pbs_mom')
+        exe = self.path_separator.join([self.pbs_conf['PBS_EXEC'], 'sbin', 'pbs_mom'])
+        exe = '"' + exe + '"'
         version = self.du.run_cmd(self.hostname,
-                                  [exe, '--version'], sudo=True)['out']
+                                  [exe, '--version'])['out']
         if version:
             self.logger.debug(version)
             # in some cases pbs_mom --version may return multiple lines, we
@@ -568,8 +1133,8 @@ class WinMoM(MoM):
                   should save with mode 'a' or 'a+'. Defaults to a+
         """
         conf = {}
-        mpriv = os.path.join(self.pbs_conf['PBS_HOME'], 'mom_priv')
-        cf = os.path.join(mpriv, 'config')
+        mpriv = self.path_separator.join([self.pbs_conf['PBS_HOME'], 'mom_priv'])
+        cf = self.path_separator.join([mpriv, 'config'])
         self._save_config_file(conf, cf)
 
         if os.path.isdir(os.path.join(mpriv, 'config.d')):
@@ -880,10 +1445,11 @@ class WinMoM(MoM):
                             f.write(str(k) + ' ' + str(eachprop) + '\n')
                     else:
                         f.write(str(k) + ' ' + str(v) + '\n')
-            dest = os.path.join(
-                self.pbs_conf['PBS_HOME'], 'mom_priv', 'config')
+            dest = self.path_separator.join(
+                [self.pbs_conf['PBS_HOME'], 'mom_priv', 'config'])
+            dest = '"' + dest + '"'
             self.du.run_copy(self.hostname, src=fn, dest=dest,
-                             preserve_permission=False, sudo=True)
+                             preserve_permission=False, sudo=False)
             os.remove(fn)
         except:
             raise PbsMomConfigError(rc=1, rv=False,
@@ -925,7 +1491,7 @@ class WinMoM(MoM):
         :type restart: bool
         """
         try:
-            fn = self.du.create_temp_file(self.hostname, body=vdef)
+            fn = self.create_temp_file(self.hostname, body=vdef)
         except:
             raise PbsMomConfigError(rc=1, rv=False,
                                     msg="Failed to insert vnode definition")
@@ -933,11 +1499,12 @@ class WinMoM(MoM):
             fname = 'pbs_vnode_' + str(int(time.time())) + '.def'
         if not additive:
             self.delete_vnode_defs()
-        cmd = [os.path.join(self.pbs_conf['PBS_EXEC'], 'sbin', 'pbs_mom')]
-        cmd += ['-s', 'insert', fname, fn]
-        ret = self.du.run_cmd(self.hostname, cmd, sudo=True, logerr=False,
+        path = self.path_separator.join([self.pbs_conf['PBS_EXEC'], 'sbin', 'pbs_mom'])
+        path = '"' + path + '"'
+        cmd = [path, '-N', '-s', 'insert', fname, fn]
+        ret = self.du.run_cmd(self.hostname, cmd, sudo=False, logerr=False,
                               level=logging.INFOCLI)
-        self.du.rm(hostname=self.hostname, path=fn, force=True)
+        # self.rm(hostname=self.hostname, path=fn, force=True)
         if ret['rc'] != 0:
             raise PbsMomConfigError(rc=1, rv=False, msg="\n".join(ret['err']))
         msg = self.logprefix + 'inserted vnode definition file '
@@ -950,10 +1517,13 @@ class WinMoM(MoM):
         """
         Check for vnode definition(s)
         """
-        cmd = [os.path.join(self.pbs_conf['PBS_EXEC'], 'sbin', 'pbs_mom')]
-        cmd += ['-s', 'list']
-        ret = self.du.run_cmd(self.hostname, cmd, sudo=True, logerr=False,
+        path = self.path_separator.join([self.pbs_conf['PBS_EXEC'], 'sbin', 'pbs_mom'])
+        path = '"' + path + '"'
+        cmd = [path, '-N', '-s', 'list']
+        # removed sudo=True because it was giving sudo -H and it was not working
+        ret = self.du.run_cmd(self.hostname, cmd, logerr=False,
                               level=logging.INFOCLI)
+        self.logger.info("-------Inside has_vnode_defs; return: %s" %(str(ret)))
         if ret['rc'] == 0:
             files = [x for x in ret['out'] if not x.startswith('PBS')]
             if len(files) > 0:
@@ -972,9 +1542,11 @@ class WinMoM(MoM):
         :type vdefname: str
         :returns: True if delete succeed otherwise False
         """
-        cmd = [os.path.join(self.pbs_conf['PBS_EXEC'], 'sbin', 'pbs_mom')]
-        cmd += ['-s', 'list']
-        ret = self.du.run_cmd(self.hostname, cmd, sudo=True, logerr=False,
+        path = self.path_separator.join([self.pbs_conf['PBS_EXEC'], 'sbin', 'pbs_mom'])
+        path = '"' + path + '"'
+        cmd = [path, '-N', '-s', 'list']
+        # removed 'sudo=True' because it was giving sudo -H and it was not working
+        ret = self.du.run_cmd(self.hostname, cmd, logerr=False,
                               level=logging.INFOCLI)
         if ret['rc'] != 0:
             return False
@@ -985,10 +1557,12 @@ class WinMoM(MoM):
                 if (vnodedef == vdefname) or vdefname is None:
                     if vnodedef.startswith('PBS'):
                         continue
-                    cmd = [os.path.join(self.pbs_conf['PBS_EXEC'], 'sbin',
-                                        'pbs_mom')]
-                    cmd += ['-s', 'remove', vnodedef]
-                    ret = self.du.run_cmd(self.hostname, cmd, sudo=True,
+                    path = self.path_separator.join([self.pbs_conf['PBS_EXEC'], 'sbin',
+                                        'pbs_mom'])
+                    path = '"' + path + '"'
+                    cmd = [path, '-N', '-s', 'remove', vnodedef]
+                    # removed 'sudo=True' because it was giving sudo -H and it was not working
+                    ret = self.du.run_cmd(self.hostname, cmd,
                                           logerr=False, level=logging.INFOCLI)
                     if ret['rc'] != 0:
                         return False
@@ -1003,10 +1577,8 @@ class WinMoM(MoM):
         _has_pro = False
         _has_epi = False
         phome = self.pbs_conf['PBS_HOME']
-        # prolog = os.path.join(phome, 'mom_priv', 'prologue')
-        # epilog = os.path.join(phome, 'mom_priv', 'epilogue')
-        prolog = "\"C:\Program Files (x86)\PBS\home\mom_priv\prologue\""
-        epilog = "\"C:\Program Files (x86)\PBS\home\mom_priv\epilogue\""
+        prolog = self.path_separator.join([phome, 'mom_priv', 'prologue'])
+        epilog = self.path_separator.join([phome, 'mom_priv', 'epilogue'])
         if self.du.isfile(self.hostname, path=prolog, sudo=True):
             _has_pro = True
         if filename == 'prologue':
@@ -1038,19 +1610,11 @@ class WinMoM(MoM):
         """
         phome = self.pbs_conf['PBS_HOME']
         self.logger.info("---------Inside delete_pelog of pbs_mom")
-        # prolog = os.path.join(phome, 'mom_priv', 'prologue')
-        # epilog = os.path.join(phome, 'mom_priv', 'epilogue')
-        prolog = "\"C:\Program Files (x86)\PBS\home\mom_priv\prologue\""
-        epilog = "\"C:\Program Files (x86)\PBS\home\mom_priv\epilogue\""
-        cmd = ['del /F /Q'] + [epilog]
-        ret = self.du.run_cmd(self.hostname, cmd, sudo=True)
-        # ret = self.du.rm(self.hostname, epilog, force=True,
-                        #  sudo=True, logerr=False)
+        prolog = self.path_separator.join([phome, 'mom_priv', 'prologue'])
+        epilog = self.path_separator.join([phome, 'mom_priv', 'epilogue'])
+        ret = self.rm(self.hostname, epilog, force=True, logerr=False)
         if ret:
-            cmd = ['del /F /Q'] + [prolog]
-            ret = self.du.run_cmd(self.hostname, cmd, sudo=True)
-            # ret = self.du.rm(self.hostname, prolog, force=True,
-                            #  sudo=True, logerr=False)
+            ret = self.rm(self.hostname, prolog, force=True, logerr=False)
         if not ret:
             self.logger.error('problem deleting prologue/epilogue')
             # we don't bail because the problem may be that files did not
@@ -1186,8 +1750,10 @@ class PBSInitMoM(PBSInitServices):
         self.hostname = hostname
         if self.hostname is None:
             self.hostname = socket.gethostname()
-        # self.dflt_conf_file = os.environ.get('PBS_CONF_FILE', 'C:\Program Files (x86)\PBS\pbs.conf')
-        self.dflt_conf_file = "\"C:\Program Files (x86)\PBS\pbs.conf\""
+        if conf is None:
+            self.dflt_conf_file = "C:\Program Files (x86)\PBS\pbs.conf"
+        else:
+            self.dflt_conf_file = conf
         self.conf_file = conf
         self.du = DshUtils()
         # self.is_linux = sys.platform.startswith('linux')
@@ -1324,32 +1890,45 @@ class PBSInitMoM(PBSInitServices):
                        sched, comm or all
         :type daemon: str
         """
-        init_cmd = copy.copy(self.du.sudo_cmd)
-        if daemon is not None and daemon != 'all':
-            conf = self.du.parse_pbs_config(hostname, conf_file)
-            dconf = {
-                'PBS_START_SERVER': 0,
-                'PBS_START_MOM': 0,
-                'PBS_START_SCHED': 0,
-                'PBS_START_COMM': 0
-            }
-
-            if daemon == 'mom' and conf.get('PBS_START_MOM', 0) != 0:
-                dconf['PBS_START_MOM'] = 1
-            for k, v in dconf.items():
-                init_cmd += ["%s=%s" % (k, str(v))]
-            _as = True
-        else:
-            fn = None
-            if (conf_file is not None) and (conf_file != self.dflt_conf_file):
-                init_cmd += ['PBS_CONF_FILE=' + conf_file]
-                _as = True
-            else:
-                _as = False
-            conf = self.du.parse_pbs_config(hostname, conf_file)
-
+        # init_cmd = copy.copy(self.du.sudo_cmd)
+        # if daemon is not None and daemon != 'all':
+            # conf = self.du.parse_pbs_config(hostname, conf_file)
+            # dconf = {
+                # 'PBS_START_SERVER': 0,
+                # 'PBS_START_MOM': 0,
+                # 'PBS_START_SCHED': 0,
+                # 'PBS_START_COMM': 0
+            # }
+            # 
+            # if daemon == 'mom' and conf.get('PBS_START_MOM', 0) != 0:
+                # dconf['PBS_START_MOM'] = 1
+            # for k, v in dconf.items():
+                # init_cmd += ["%s=%s" % (k, str(v))]
+            # _as = True
+        # else:
+            # fn = None
+            # if (conf_file is not None) and (conf_file != self.dflt_conf_file):
+                # init_cmd += ['PBS_CONF_FILE=' + conf_file]
+                # _as = True
+            # else:
+                # _as = False
+            # conf = self.du.parse_pbs_config(hostname, conf_file)
+        # if (init_script is None) or (not init_script.startswith('/')):
+            # if 'PBS_EXEC' not in conf:
+                # msg = 'Missing PBS_EXEC setting in pbs config'
+                # raise PbsInitServicesError(rc=1, rv=False, msg=msg)
+            # if init_script is None:
+                # init_script = os.path.join(conf['PBS_EXEC'], 'libexec',
+                                        #    'pbs_init.d')
+            # else:
+                # init_script = os.path.join(conf['PBS_EXEC'], 'etc',
+                                        #    init_script)
+            # if not self.du.isfile(hostname, path=init_script, sudo=True):
+                # Could be Type 3 installation where we will not have
+                # PBS_EXEC/libexec/pbs_init.d
+                # return []
         init_script = "net"
-        init_cmd += [init_script, op, "pbs_mom"]
+        init_cmd = [init_script, op, "pbs_mom"]
         msg = 'running init script to ' + op + ' pbs'
         if daemon is not None and daemon != 'all':
             msg += ' ' + daemon
@@ -1358,14 +1937,12 @@ class PBSInitMoM(PBSInitServices):
             msg += ' using ' + conf_file
         msg += ' init_cmd=%s' % (str(init_cmd))
         self.logger.info(msg)
-        ret = self.du.run_cmd(hostname, init_cmd, as_script=_as,
-                              logerr=False)
+        ret = self.du.run_cmd(hostname, init_cmd, logerr=False)
         if ret['rc'] != 0:
             raise PbsInitServicesError(rc=ret['rc'], rv=False,
                                        msg='\n'.join(ret['err']))
         else:
             return ret
-
 
 class ProcInfo(object):
 

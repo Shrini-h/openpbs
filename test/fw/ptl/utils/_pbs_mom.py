@@ -166,10 +166,57 @@ class MoM(PBSService):
         # This is true by default, but can be set to False if
         # required by a test
         self.revert_to_default = True
+        self.sleep_cmd = '/bin/sleep'
 
     def __del__(self):
         del self.__dict__
 
+    def run_printjob(self, hostname=None, job_id=None):
+        """
+        Run the printjob command for the given job id
+        :param hostname: mom hostname
+        :type hostname: string
+        :param job_id: job's id for which to run printjob cmd
+        :type job_id: string
+        """
+        if hostname is None:
+            hostname = self.hostname
+        
+        if job_id is None:
+            return None
+        
+        printjob = os.path.join(self.pbs_conf['PBS_EXEC'], 'bin',
+                                'printjob')
+        jbfile = os.path.join(self.pbs_conf['PBS_HOME'], 'mom_priv',
+                              'jobs', job_id + '.JB')
+        ret = self.du.run_cmd(hostname, cmd=[printjob, jbfile],
+                              sudo=True)
+        return ret
+    
+    def check_suspended_state(self, hostname=None, pid=None):
+        """
+        Check if given job is in suspended state or not
+        :param hostname: mom hostname
+        :type hostname: string
+        """
+
+        if hostname is None:
+            hostname = self.hostname
+        
+        if pid is None:
+            self.logger.error("Could not get pid to check the state")
+            return False
+        state = 'T'
+        rv = self.pu.get_proc_state(hostname, pid)
+        if rv != state:
+            return False
+        childlist = self.pu.get_proc_children(hostname, pid)
+        for child in childlist:
+            rv = self.pu.get_proc_state(hostname, child)
+            if rv != state:
+                return False
+        return True
+    
     def isUp(self, max_attempts=None):
         """
         Check for PBS mom up

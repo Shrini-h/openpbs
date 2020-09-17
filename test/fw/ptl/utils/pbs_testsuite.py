@@ -942,6 +942,7 @@ class PBSTestSuite(unittest.TestCase):
             server = cls.servers[server]
         except BaseException:
             server = None
+        cls.logger.info("---------inside init_mom; pbsconf_file:%s" %(pbsconf_file))
         from ptl.utils.pbs_mom import get_mom_obj
         return get_mom_obj(hostname, pbsconf_file=pbsconf_file, server=server)
         # return MoM(hostname, pbsconf_file=pbsconf_file, server=server)
@@ -1521,7 +1522,7 @@ class PBSTestSuite(unittest.TestCase):
             mom.start()
             msg = 'Failed to restart mom ' + mom.hostname
             self.assertTrue(mom.isUp(), msg)
-        # mom.pbs_version()
+        mom.pbs_version()
         restart = False
         enabled_cpuset = False
         if ((self.revert_to_defaults and self.mom_revert_to_defaults and
@@ -1536,7 +1537,7 @@ class PBSTestSuite(unittest.TestCase):
             conf = mom.dflt_config
             if 'clienthost' in self.conf:
                 conf.update({'$clienthost': self.conf['clienthost']})
-            # mom.apply_config(conf=conf, hup=False, restart=False)
+            mom.apply_config(conf=conf, hup=False, restart=False)
             if mom.is_cpuset_mom():
                 enabled_cpuset = True
         if restart:

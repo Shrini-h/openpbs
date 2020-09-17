@@ -5166,6 +5166,11 @@ class Server(PBSService):
         if self.platform == 'cray' or self.platform == 'craysim':
             setdict[ATTR_restrict_res_to_release_on_suspend] = 'ncpus'
         if delhooks:
+            if (self.platform == 'cray' or self.platform == 'craysim' or
+                    self.platform == 'shasta'):
+                reverthooks = True
+            else:
+                reverthooks = False
             self.delete_site_hooks()
         if delqueues:
             revertqueues = False
@@ -6081,6 +6086,11 @@ class Server(PBSService):
             if submit_dir:
                 os.chdir(submit_dir)
         c = None
+        self.logger.info("---------inside submit; self.moms.values: %s " % str(self.moms.values()))
+        self.logger.info("---------inside submit; self.moms's first value: %s " % str(list(self.moms.values())[0]))
+        self.logger.info("---------inside submit; self.moms' sleep_cmd: %s " % str((list(self.moms.values())[0]).sleep_cmd))
+        if ATTR_executable in obj.attributes and obj.attributes[ATTR_executable] == '/bin/sleep':
+            obj.attributes[ATTR_executable] = (list(self.moms.values())[0]).sleep_cmd
         # 1- Submission using the command line tools
         runcmd = []
         if env:
@@ -8727,6 +8737,7 @@ class Server(PBSService):
                         self.nodes[id].attributes.update(binfo)
                 else:
                     from ptl.utils.pbs_mom import get_mom_obj
+                    print("-----Inside testlib, id=%s----- " %id)
                     self.nodes[id] = get_mom_obj(id, binfo, snapmap={NODE: None},
                                          server=self)
                     # self.nodes[id] = MoM(id, binfo, snapmap={NODE: None},
@@ -13502,11 +13513,12 @@ class Job(ResourceResv):
 
         # If the user has a userhost, the job will run from there
         # so the script should be made there
-        if self.username:
-            user = PbsUser.get_user(self.username)
-            if user.host:
-                hostname = user.host
-                asuser = user.name
+        # Commenting because I am using saksham as user
+        # if self.username:
+            # user = PbsUser.get_user(self.username)
+            # if user.host:
+                # hostname = user.host
+                # asuser = user.name
 
         self.script_body = body
         if self.du is None:

@@ -39,7 +39,7 @@
 
 
 from ptl.utils.pbs_testsuite import *
-
+TEST_USER='saksham'
 
 @tags('smoke')
 class SmokeTest(PBSTestSuite):
@@ -82,9 +82,8 @@ class SmokeTest(PBSTestSuite):
         self.server.manager(MGR_CMD_SET, NODE, a, id=self.mom.shortname)
         r = Reservation(TEST_USER)
         now = int(time.time())
-        r_start_time = now + 30
         a = {'Resource_List.select': '1:ncpus=4',
-             'reserve_start': r_start_time,
+             'reserve_start': now + 10,
              'reserve_end': now + 110}
         r.set_attributes(a)
         rid = self.server.submit(r)
@@ -103,10 +102,8 @@ class SmokeTest(PBSTestSuite):
         j2 = Job(TEST_USER, attrs=a)
         jid2 = self.server.submit(j2)
 
-        offset = r_start_time - int(time.time())
         a = {'reserve_state': (MATCH_RE, "RESV_RUNNING|5")}
-        self.server.expect(RESV, a, id=rid, interval=1,
-                           offset=offset)
+        self.server.expect(RESV, a, id=rid, interval=1)
         self.server.expect(JOB, {'job_state': 'R'}, jid1)
         self.server.expect(JOB, {'job_state': 'B'}, jid2)
 
@@ -350,6 +347,7 @@ class SmokeTest(PBSTestSuite):
         j = Job(TEST_USER, a)
         j.set_sleep_time(15)
         mom = self.moms.values()[0].shortname
+        self.logger.info("-------Inside test_finished_jobs; mom=%s------" %(mom))
         j.create_eatcpu_job(15, mom)
         jid = self.server.submit(j)
         self.server.expect(JOB, {'job_state': 'F'}, extend='x', offset=15,
@@ -467,7 +465,7 @@ class SmokeTest(PBSTestSuite):
         self.server.create_vnodes('vnode', a, 4, self.mom)
         a = {'Resource_List.select': '1:ncpus=4'}
         for _ in range(10):
-            j = Job(TEST_USER1, a)
+            j = Job(TEST_USER, a)
             self.server.submit(j)
         a = {'job_state=R': 4}
         self.server.expect(JOB, a)
@@ -560,13 +558,13 @@ class SmokeTest(PBSTestSuite):
         Test to submit job with job script
         """
         j = Job(TEST_USER, attrs={ATTR_N: 'test'})
-        j.create_script('sleep 120\n', hostname=self.server.client)
+        j.create_script('pbs-sleep 120\n', hostname=self.server.client)
         jid = self.server.submit(j)
         self.server.expect(JOB, {'job_state': 'R'}, id=jid)
         self.server.delete(id=jid, extend='force', wait=True)
         self.logger.info("Testing script with extension")
         j = Job(TEST_USER)
-        fn = self.du.create_temp_file(suffix=".scr", body="/bin/sleep 10",
+        fn = self.du.create_temp_file(hostname=self.server.client, suffix=".scr", body="pbs-sleep 15",
                                       asuser=str(TEST_USER))
         jid = self.server.submit(j, script=fn)
         self.server.expect(JOB, {'job_state': 'R'}, id=jid)
@@ -599,19 +597,23 @@ class SmokeTest(PBSTestSuite):
         """
         Test for file staging
         """
-        fn = self.du.create_temp_file(asuser=str(TEST_USER))
-        a = {ATTR_stagein: fn + '2@' + self.server.hostname + ':' + fn}
+        # fn = self.du.create_temp_file(hostname=self.server.hostname, asuser=str(TEST_USER))
+        # a = {ATTR_stagein: fn + '2@' + self.server.hostname + ':' + fn}
+        stagein_cmd = self.mom.get_stagein_cmd(storage_host=self.server.hostname, asuser=str(TEST_USER))
+        a = {ATTR_stagein: stagein_cmd}
+        j = Job(TEST_USER, a)
+        j.set_sleep_time(20)
+        jid = self.server.submit(j)
+        self.server.expect(JOB, 'queue', op=UNSET, id=jid, offset=2)
+        #a = {ATTR_stageout: fn + '@' + self.server.hostname + ':' + fn + '2'}
+        stageout_cmd = self.mom.get_stageout_cmd(execution_host=self.mom.hostname, storage_host=self.server.hostname, asuser=str(TEST_USER))
+        a = {ATTR_stageout: stageout_cmd}
         j = Job(TEST_USER, a)
         j.set_sleep_time(2)
         jid = self.server.submit(j)
         self.server.expect(JOB, 'queue', op=UNSET, id=jid, offset=2)
-        a = {ATTR_stageout: fn + '@' + self.server.hostname + ':' + fn + '2'}
-        j = Job(TEST_USER, a)
-        j.set_sleep_time(2)
-        jid = self.server.submit(j)
-        self.server.expect(JOB, 'queue', op=UNSET, id=jid, offset=2)
-        self.du.rm(self.server.hostname, fn, force=True, sudo=True)
-        self.du.rm(self.server.hostname, fn + '2', force=True, sudo=True)
+        #self.du.rm(self.server.hostname, fn, force=True, sudo=True)
+        #self.du.rm(self.server.hostname, fn + '2', force=True, sudo=True)
 
     def test_route_queue(self):
         """
@@ -781,12 +783,13 @@ class SmokeTest(PBSTestSuite):
         jid = self.server.submit(j)
         a = {'job_state': 'R', 'substate': 42}
         self.server.expect(JOB, a, id=jid)
-        printjob = os.path.join(self.mom.pbs_conf['PBS_EXEC'], 'bin',
-                                'printjob')
-        jbfile = os.path.join(self.mom.pbs_conf['PBS_HOME'], 'mom_priv',
-                              'jobs', jid + '.JB')
-        ret = self.du.run_cmd(self.mom.hostname, cmd=[printjob, jbfile],
-                              sudo=True)
+        # printjob = os.path.join(self.mom.pbs_conf['PBS_EXEC'], 'bin',
+                                # 'printjob')
+        # jbfile = os.path.join(self.mom.pbs_conf['PBS_HOME'], 'mom_priv',
+                            #   'jobs', jid + '.JB')
+        # ret = self.du.run_cmd(self.mom.hostname, cmd=[printjob, jbfile],
+                            #   sudo=True)
+        ret = self.mom.run_printjob(self.mom.hostname, jid)
         self.assertEqual(ret['rc'], 0)
 
     def test_comm_service(self):
@@ -967,16 +970,16 @@ class SmokeTest(PBSTestSuite):
         self.server.manager(MGR_CMD_SET, SERVER, {'scheduling': 'False'})
         a = {'Resource_List.select': '1:ncpus=1:mem=300kb',
              'Resource_List.walltime': 4}
-        J1 = Job(TEST_USER1, attrs=a)
+        J1 = Job(TEST_USER, attrs=a)
         a = {'Resource_List.select': '1:ncpus=1:mem=350kb',
              'Resource_List.walltime': 4}
-        J2 = Job(TEST_USER1, attrs=a)
+        J2 = Job(TEST_USER, attrs=a)
         a = {'Resource_List.select': '1:ncpus=1:mem=380kb',
              'Resource_List.walltime': 4}
-        J3 = Job(TEST_USER1, attrs=a)
+        J3 = Job(TEST_USER, attrs=a)
         a = {'Resource_List.select': '1:ncpus=1:mem=440kb',
              'Resource_List.walltime': 4}
-        J4 = Job(TEST_USER1, attrs=a)
+        J4 = Job(TEST_USER, attrs=a)
         j1id = self.server.submit(J1)
         j2id = self.server.submit(J2)
         j3id = self.server.submit(J3)
@@ -984,13 +987,13 @@ class SmokeTest(PBSTestSuite):
         self.server.manager(MGR_CMD_SET, SERVER, {'scheduling': 'True'})
         rv = self.server.expect(SERVER, {'server_state': 'Scheduling'}, op=NE)
         self.logger.info("Checking the job state of " + j4id)
-        self.server.expect(JOB, {'job_state': 'R'}, id=j4id, max_attempts=30,
+        self.server.expect(JOB, {'job_state': 'R'}, id=j4id, max_attempts=60,
                            interval=2)
-        self.server.expect(JOB, {'job_state': 'Q'}, id=j3id, max_attempts=30,
+        self.server.expect(JOB, {'job_state': 'Q'}, id=j3id, max_attempts=60,
                            interval=2)
-        self.server.expect(JOB, {'job_state': 'Q'}, id=j2id, max_attempts=30,
+        self.server.expect(JOB, {'job_state': 'Q'}, id=j2id, max_attempts=60,
                            interval=2)
-        self.server.expect(JOB, {'job_state': 'Q'}, id=j1id, max_attempts=30,
+        self.server.expect(JOB, {'job_state': 'Q'}, id=j1id, max_attempts=60,
                            interval=2)
         msg = "Checking the job state of %s, runs after %s is deleted" % (j3id,
                                                                           j4id)
@@ -1043,17 +1046,21 @@ class SmokeTest(PBSTestSuite):
         Check wether <ppid> is in Suspended state, return True if
         <ppid> in Suspended state else return False
         """
-        state = 'T'
-        rv = self.mom.pu.get_proc_state(self.mom.shortname, ppid)
-        if rv != state:
-            return False
-        childlist = self.mom.pu.get_proc_children(self.mom.shortname,
-                                                  ppid)
-        for child in childlist:
-            rv = self.mom.pu.get_proc_state(self.mom.shortname, child)
-            if rv != state:
-                return False
-        return True
+
+        self.logger.info("-------------Inside isSuspended; ppid:%s" %(ppid))
+        ret = self.mom.check_suspended_state(self.mom.shortname, ppid)
+        return ret
+        # Put in linux MoM
+        # rv = self.mom.pu.get_proc_state(self.mom.shortname, ppid)
+        # if rv != state:
+            # return False
+        # childlist = self.mom.pu.get_proc_children(self.mom.shortname,
+                                                #   ppid)
+        # for child in childlist:
+            # rv = self.mom.pu.get_proc_state(self.mom.shortname, child)
+            # if rv != state:
+                # return False
+        # return True
 
     def do_preempt_config(self):
         """
