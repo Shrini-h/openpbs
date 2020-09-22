@@ -171,6 +171,42 @@ class MoM(PBSService):
     def __del__(self):
         del self.__dict__
 
+    def get_stagein_cmd(self, execution_info={}, storage_info={}, asuser=None):
+        """
+        """
+        if storage_info['hostname'] is None:
+            storage_host = self.server.hostname
+        else:
+            storage_host = storage_info['hostname']
+
+        storage_path = self.du.create_temp_file(storage_host, storage_info['suffix'], storage_info['prefix'],
+                                     asuser=asuser)
+
+        execution_path = storage_path + '2'
+        
+        cmd = '%s@%s:%s' % (execution_path, storage_host, storage_path)
+        return cmd
+    
+    def get_stageout_cmd(self, execution_info={}, storage_info={}, asuser=None):
+        """
+        """
+        if storage_info['hostname'] is None:
+            storage_host = self.server.hostname
+        else:
+            storage_host = storage_info['hostname']
+
+        storage_path = tempfile.gettempdir()
+        
+        if execution_info['hostname'] is None:
+            execution_host = self.hostname
+        else:
+            execution_host = execution_info['hostname']
+        execution_path = self.du.create_temp_file(execution_host, execution_info['suffix'], execution_info['prefix'],
+                                     asuser=asuser)
+
+        cmd = '%s@%s:%s' % (execution_path, storage_host, storage_path)
+        return cmd
+
     def run_printjob(self, hostname=None, job_id=None):
         """
         Run the printjob command for the given job id
@@ -193,7 +229,7 @@ class MoM(PBSService):
                               sudo=True)
         return ret
     
-    def check_suspended_state(self, hostname=None, pid=None):
+    def is_suspended_state(self, hostname=None, pid=None):
         """
         Check if given job is in suspended state or not
         :param hostname: mom hostname

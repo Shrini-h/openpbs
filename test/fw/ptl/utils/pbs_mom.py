@@ -41,6 +41,7 @@ import ptl
 import os
 import logging
 import time
+import tempfile
 
 from ptl.utils._pbs_mom import MoM
 from ptl.utils.pbs_dshutils import DshUtils
@@ -122,7 +123,6 @@ class WinMoM(MoM):
         if ((ret['rc'] == 0) and (len(ret['out']) > 0) and
                 (ret['out'][0] != 'False')):
             dflt_conf = ret['out'][0]
-            self.logger.info("-----Inside Mom's _init_; dflt_conf:%s" %(dflt_conf))
         pbsconf_file = dflt_conf
         self.logger.info("-----Inside Mom's _init_; pbsconf_file:%s" %(pbsconf_file))
 
@@ -154,6 +154,8 @@ class WinMoM(MoM):
         self.du = DshUtils()
         self.processes = {}
         self.sleep_cmd = 'pbs_sleep'
+        self.user_home_dir = self.get_user_dir(self.hostname, 'home')
+        self.user_temp_dir = self.get_user_dir(self.hostname, 'temp')
 
     def __del__(self):
         del self.__dict__
@@ -231,6 +233,28 @@ class WinMoM(MoM):
             tm = time.strftime("%Y%m%d", time.localtime())
             self.logfile = self.path_separator.join([self.pbs_conf['PBS_HOME'], 'mom_logs', tm])
 
+    def get_user_dir(self, hostname=None, directory=None, user=None):
+        """
+        """
+        if hostname is None:
+            hostname = self.hostname
+        
+        if directory is None:
+            self.logger.error("Can't get user directory")
+        
+        cmd = ['ssh', hostname]
+        if directory == 'temp':
+            cmd += ['echo %TEMP%']
+        elif directory == 'home':
+            cmd += ['echo %USERPROFILE%']
+        
+        ret = self.du.run_cmd(cmd=cmd, runas=user)
+        if ret['rc'] == 0:
+            return ret['out'][0]
+        else:
+            return ret['err']
+
+
     def _init_processes(self):
         self.processes = {}
     
@@ -244,18 +268,17 @@ class WinMoM(MoM):
             return None
         path = '"' + path + '"'
         cmd = ['type', path]
-        self.logger.info("---------Inside print_file; cmd: %s" %(cmd))
         rv = self.du.run_cmd(self.hostname, cmd=cmd)
         return rv
 
         
-    def rm(self, hostname=None, path=None, sudo=False, runas=None,
+    def delete_file(self, hostname=None, path=None, sudo=False, runas=None,
            recursive=False, force=False, cwd=None, logerr=True,
            as_script=False, level=logging.INFOCLI2):
         """
-        Generic function of rm with remote host support
+        Generic function of deleting file
 
-        :param hostname: hostname (default current host)
+        :param hostname: hostname (default Mom's host)
         :type hostname: str or None
         :param path: the path to the files or directories to remove
                      for more than one files or directories pass as
@@ -313,7 +336,7 @@ class WinMoM(MoM):
         if ret['rc'] != 0:
             return False
         return True
-
+    
     def create_temp_file(self, hostname=None, suffix='', prefix='PtlPbs',
                          dirname=None, text=False, asuser=None, body=None):
         """
@@ -354,25 +377,31 @@ class WinMoM(MoM):
             if asuser.host:
                 hostname = asuser.host
 
+        destination = None
         # if temp file to be created on remote host
         if not self.du.is_localhost(hostname):
+            destination = self.get_user_dir(hostname, 'temp', asuser)
+            filename = tmpfile.split('/')[-1]
+            destination = destination + '\\' + filename
             if asuser is not None:
                 # by default mkstemp creates file with 0600 permission
                 # to create file as different user first change the file
                 # permission to 0644 so that other user has read permission
                 self.du.chmod(path=tmpfile, mode=0o644)
+                # Changing the ownership here as when stageout happens
+                # the scp fails saying permission error
+                self.du.chown(path=tmpfile, uid=asuser, sudo=True)
                 # copy temp file created  on local host to remote host
                 # as different user
-                self.du.run_copy(hostname, src=tmpfile, dest=tmpfile,
+                self.du.run_copy(hostname, src=tmpfile, dest=destination,
                               runas=asuser, preserve_permission=False)
             else:
                 # copy temp file created on localhost to remote as current user
-                destination = "\"C:\\Users\\saksham\\PtlPbs\""
                 self.du.run_copy(hostname, src=tmpfile, dest=destination,
                               preserve_permission=False)
                 # remove local temp file
                 os.unlink(tmpfile)
-        if asuser is not None:
+        '''if asuser is not None:
             # by default mkstemp creates file with 0600 permission
             # to create file as different user first change the file
             # permission to 0644 so that other user has read permission
@@ -387,15 +416,15 @@ class WinMoM(MoM):
                           preserve_permission=False)
             # remove original temp file
             os.unlink(tmpfile)
-            # self.tmpfilelist.append(tmpfile2)
-            return tmpfile2
-        # self.tmpfilelist.append(tmpfile)
+            #self.tmpfilelist.append(tmpfile2)
+            return tmpfile2'''
+        #self.tmpfilelist.append(tmpfile)
         return destination
 
     def _get_proc_info(self, hostname=None, name=None,
                        pid=None, regexp=False):
         """
-        Helper function to ``get_proc_info`` for Unix only system
+        Helper function to ``get_proc_info``
         """
         platform = None
 
@@ -472,7 +501,6 @@ class WinMoM(MoM):
         self.get_proc_info(self.hostname, ".*" + cmd + ".*",
                            regexp=True)
         _procs = self.processes.values()
-        self.logger.info("---------Inside _all_instance_pids; _procs: %s" %(str(_procs)))
         if _procs:
             _pids = []
             for _p in _procs:
@@ -496,9 +524,8 @@ class WinMoM(MoM):
             pid = rv['out'][0].strip()
         else:
             pid = None
-        self.logger.info("---------Inside _get_pid; pid: %s" %(str(pid)))
         return pid
-
+    
     def _validate_pid(self):
         """
         Get pid and validate
@@ -512,42 +539,41 @@ class WinMoM(MoM):
                 return pid
             time.sleep(1)
         return None
-
-    def get_stagein_cmd(self, execution_path=None, storage_host=None, storage_path=None, asuser=None):
+    
+    def get_stagein_cmd(self, execution_info={}, storage_info={}, asuser=None):
         """
         """
-        if storage_host is None:
+        if storage_info['hostname'] is None:
             storage_host = self.server.hostname
-
-        if storage_path is None:
-            fn = self.create_temp_file(hostname=self.server.hostname, asuser=asuser)
         else:
-            fn = storage_path
+            storage_host = storage_info['hostname']
 
-        if execution_path is None:
-            fn1 = "\"C:\\Users\\saksham\\PtlPbsStagein\""
+        storage_path = self.du.create_temp_file(storage_host, storage_info['suffix'], storage_info['prefix'],
+                                     asuser=asuser)
 
-        cmd = '%s@%s:%s' % (fn1, storage_host, fn)
-        self.logger.info("----Inside get_stagein_cmd; cmd: %s" %(cmd))
+        execution_path = self.get_user_dir(self.hostname, 'temp', asuser)
+        
+        cmd = '"%s@%s:%s"' % (execution_path, storage_host, storage_path)
         return cmd
-
-    def get_stageout_cmd(self, execution_path=None, execution_host=None, storage_host=None, storage_path=None, asuser=None):
+    
+    def get_stageout_cmd(self, execution_info={}, storage_info={}, asuser=None):
         """
         """
-        if storage_host is None:
+        if storage_info['hostname'] is None:
             storage_host = self.server.hostname
-
-        if storage_path is None:
-            fn = self.create_temp_file(hostname=self.server.hostname, asuser=asuser)
         else:
-            fn = storage_path
+            storage_host = storage_info['hostname']
 
-        if execution_path is None:
-            fn1 = self.create_temp_file(hostname=execution_host)
-            self.logger.info("----Inside get_stageout_cmd; fn1: %s" %(fn1))
+        storage_path = tempfile.gettempdir()
 
-        cmd = '%s@%s:%s' % (fn1, storage_host, fn)
-        self.logger.info("----Inside get_stageout_cmd; cmd: %s" %(cmd))
+        if execution_info['hostname'] is None:
+            execution_host = self.hostname
+        else:
+            execution_host = execution_info['hostname']
+        execution_path = self.create_temp_file(execution_host, execution_info['suffix'], execution_info['prefix'],
+                                     asuser=asuser)
+        
+        cmd = '"%s@%s:%s"' % (execution_path, storage_host, storage_path)
         return cmd
 
     def run_printjob(self, hostname=None, job_id=None):
@@ -560,10 +586,10 @@ class WinMoM(MoM):
         """
         if hostname is None:
             hostname = self.hostname
-
+        
         if job_id is None:
             return None
-
+        
         printjob = self.path_separator.join([self.pbs_conf['PBS_EXEC'], 'bin',
                                 'printjob_host'])
         jbfile = self.path_separator.join([self.pbs_conf['PBS_HOME'], 'mom_priv',
@@ -572,23 +598,23 @@ class WinMoM(MoM):
         jbfile = '"' + jbfile + '"'
         ret = self.du.run_cmd(hostname, cmd=[printjob, jbfile])
         return ret
-
-    def check_suspended_state(self, hostname=None, pid=None):
+    
+    def is_suspended_state(self, hostname=None, pid=None):
         """
         """
 
         if hostname is None:
             hostname = self.hostname
-
+        
         if pid is None:
             self.logger.error("Could not get pid to check the state")
             return False
-
+        
         cmd = 'powershell -command \"(Get-Process -Id ' + pid + ').Threads | select WaitReason | Format-List\"'
         ret = self.du.run_cmd(hostname, cmd=cmd)
         if ret['rc'] == 0:
             for rv in ret['out']:
-                self.logger.info("-----Inside check_suspended_state-----rv:%s" %(rv))
+                self.logger.info("-----Inside is_suspended_state-----rv:%s" %(rv))
                 if rv.startswith('WaitReason :') and rv.split(':')[1] != ' Suspended':
                     return False
         else:
@@ -649,7 +675,7 @@ class WinMoM(MoM):
 
         pid = self._get_pid()
 
-        cmd = ['taskkill', '/F', 'PID']
+        cmd = ['taskkill', '/F', '/PID']
         if procname is not None:
             pi = self.get_proc_info(self.hostname, procname)
             if pi is not None and pi.values() and list(pi.values())[0]:
@@ -664,9 +690,16 @@ class WinMoM(MoM):
             return {'rc': 0, 'err': '', 'out': 'no pid to signal'}
 
         cmd += [pid]
-        if sig is '-HUP':
-            cmd += ['&', 'net start pbs_mom']
-        return self.du.run_cmd(self.hostname, cmd)
+        if sig == '-HUP':
+            cmd += ['&&', 'net start pbs_mom']
+
+        ret = self.du.run_cmd(self.hostname, cmd)
+        if ret['rc'] == 0:
+            # Doing this because of read permission error of mom.lock file
+            cmd = ['net stop pbs_mom && net start pbs_mom']
+            ret = self.du.run_cmd(self.hostname, cmd)
+        return ret
+        
 
     def signal(self, sig):
         """
@@ -804,9 +837,6 @@ class WinMoM(MoM):
                     self.logger.info("-----Inside log_lines, filename=%s" %(filename))
                     if n == 'ALL':
                         day_lines = self.print_file(self.hostname, filename)['out']
-                        # day_lines = self.du.cat(
-                            # host, filename, sudo=sudo,
-                            # level=logging.DEBUG2)['out']
                     else:
                         if tail:
                             cmd = ['/usr/bin/tail']
@@ -1141,8 +1171,6 @@ class WinMoM(MoM):
 
         new_pbsconf = dict(vals_to_set)
         restart_mom = False
-        # pfile = "C:\\Users\\pbsadmin\\PBS\\pbs.conf"
-        # pbs_conf_val = self.parse_mom_file(self.hostname, pfile)
         if self.pbs_conf:
             pbs_conf_val = self.pbs_conf
         self.logger.info("----Inside revert_mom_pbs_conf; pbs_conf_val:%s" %(pbs_conf_val))
@@ -1304,39 +1332,21 @@ class WinMoM(MoM):
 
     def is_cray(self):
         """
-        Returns True if the version of PBS used was built for Cray platforms
+        Not there in Windows platform
         """
-        try:
-            self.log_match("alps_client", n='ALL', tail=False, max_attempts=1)
-        except PtlLogMatchError:
-            return False
-        else:
-            return True
+        return False
 
     def is_shasta(self):
         """
-        Returns True if the version of PBS used is installed on Shasta platform
+        Not there in Windows platform
         """
-        if self.platform == 'shasta':
-            return True
-        else:
-            return False
+        return False
 
     def is_cpuset_mom(self):
         """
-        Check for cgroup cpuset enabled system
+        Not there in Windows platforms
         """
-        if self._is_cpuset_mom is not None:
-            return self._is_cpuset_mom
-        hpe_file1 = "/etc/sgi-compute-node-release"
-        hpe_file2 = "/etc/sgi-known-distributions"
-        ret1 = self.du.isfile(self.hostname, path=hpe_file1)
-        ret2 = self.du.isfile(self.hostname, path=hpe_file2)
-        if ret1 or ret2:
-            self._is_cpuset_mom = True
-        else:
-            self._is_cpuset_mom = False
-        return self._is_cpuset_mom
+        return False
 
     def create_vnode_def(self, name, attrs={}, numnodes=1, sharednode=True,
                          pre='[', post=']', usenatvnode=False, attrfunc=None,
@@ -1457,17 +1467,10 @@ class WinMoM(MoM):
     def add_restart_script(self, dirname=None, body=None,
                            abort_time=30):
         """
-        Add restart script in the mom config.
-        returns: a temp file for restart script
+        Only been used in one cgroups test
+        Not valid for Windows Platform
         """
-        rst_file = self.du.create_temp_file(hostname=self.hostname, body=body,
-                                            dirname=dirname)
-        self.du.chmod(hostname=self.hostname, path=rst_file, mode=0o700)
-        self.du.chown(hostname=self.hostname, path=rst_file, runas=ROOT_USER,
-                      uid=0, gid=0)
-        c = {'$action restart': str(abort_time) + ' !' + rst_file + ' %sid'}
-        self.add_config(c)
-        return rst_file
+        return None
 
     def parse_config(self):
         """
@@ -1643,7 +1646,7 @@ class WinMoM(MoM):
         cmd = [path, '-N', '-s', 'insert', fname, fn]
         ret = self.du.run_cmd(self.hostname, cmd, sudo=False, logerr=False,
                               level=logging.INFOCLI)
-        # self.rm(hostname=self.hostname, path=fn, force=True)
+        # self.delete_file(hostname=self.hostname, path=fn, force=True)
         if ret['rc'] != 0:
             raise PbsMomConfigError(rc=1, rv=False, msg="\n".join(ret['err']))
         msg = self.logprefix + 'inserted vnode definition file '
@@ -1662,7 +1665,6 @@ class WinMoM(MoM):
         # removed sudo=True because it was giving sudo -H and it was not working
         ret = self.du.run_cmd(self.hostname, cmd, logerr=False,
                               level=logging.INFOCLI)
-        self.logger.info("-------Inside has_vnode_defs; return: %s" %(str(ret)))
         if ret['rc'] == 0:
             files = [x for x in ret['out'] if not x.startswith('PBS')]
             if len(files) > 0:
@@ -1748,12 +1750,11 @@ class WinMoM(MoM):
         defined on this MoM
         """
         phome = self.pbs_conf['PBS_HOME']
-        self.logger.info("---------Inside delete_pelog of pbs_mom")
         prolog = self.path_separator.join([phome, 'mom_priv', 'prologue'])
         epilog = self.path_separator.join([phome, 'mom_priv', 'epilogue'])
-        ret = self.rm(self.hostname, epilog, force=True, logerr=False)
+        ret = self.delete_file(self.hostname, epilog, force=True, logerr=False)
         if ret:
-            ret = self.rm(self.hostname, prolog, force=True, logerr=False)
+            ret = self.delete_file(self.hostname, prolog, force=True, logerr=False)
         if not ret:
             self.logger.error('problem deleting prologue/epilogue')
             # we don't bail because the problem may be that files did not
@@ -1825,52 +1826,10 @@ class WinMoM(MoM):
 
     def enable_cgroup_cset(self):
         """
-        Configure and enable cgroups hook
+        Not valid for Windows Platform
         """
-        # check if cgroups subsystems including cpusets are mounted
-        file = os.path.join(os.sep, 'proc', 'mounts')
-        mounts = self.du.cat(self.hostname, file)['out']
-        pat = 'cgroup /sys/fs/cgroup'
-        enablemem = False
-        for line in mounts:
-            entries = line.split()
-            if entries[2] != 'cgroup':
-                continue
-            flags = entries[3].split(',')
-            if 'memory' in flags:
-                enablemem = True
-        if str(mounts).count(pat) >= 6 and str(mounts).count('cpuset') >= 2:
-            pbs_conf_val = self.du.parse_pbs_config(self.hostname)
-            f1 = os.path.join(pbs_conf_val['PBS_EXEC'], 'lib',
-                              'python', 'altair', 'pbs_hooks',
-                              'pbs_cgroups.CF')
-            # set vnode_per_numa_node = true, use_hyperthreads = true
-            with open(f1, "r") as cfg:
-                cfg_dict = json.load(cfg)
-            cfg_dict['vnode_per_numa_node'] = True
-            cfg_dict['use_hyperthreads'] = True
-
-            # if the memory subsystem is not mounted, do not enable mem
-            # in the cgroups config otherwise PTL tests will fail.
-            # This matches what is documented for cgroups and mem.
-            cfg_dict['cgroup']['memory']['enabled'] = enablemem
-            _, path = tempfile.mkstemp(prefix="cfg", suffix=".json")
-            with open(path, "w") as cfg1:
-                json.dump(cfg_dict, cfg1, indent=4)
-            # read in the cgroup hook configuration
-            a = {'content-type': 'application/x-config',
-                 'content-encoding': 'default',
-                 'input-file': path}
-            self.server.manager(MGR_CMD_IMPORT, HOOK, a,
-                                'pbs_cgroups')
-            os.remove(path)
-            # enable cgroups hook
-            self.server.manager(MGR_CMD_SET, HOOK,
-                                {'enabled': 'True'}, 'pbs_cgroups')
-        else:
-            self.logger.error('%s: cgroup subsystems not mounted' %
-                              self.hostname)
-            raise AssertionError('cgroup subsystems not mounted')
+        return None
+        
 
 from ptl.lib.pbs_testlib import PBSInitServices
 
@@ -1897,7 +1856,7 @@ class PBSInitMoM(PBSInitServices):
         self.du = DshUtils()
         # self.is_linux = sys.platform.startswith('linux')
 
-    def initd(self, hostname=None, op='status', conf_file=None,
+    def initd(self, hostname=None, op='start', conf_file=None,
               init_script=None, daemon='all'):
         """
         Run the init script for a given operation
@@ -1918,8 +1877,24 @@ class PBSInitMoM(PBSInitServices):
             hostname = self.hostname
         if conf_file is None:
             conf_file = self.conf_file
-        return self._unix_initd(hostname, op, conf_file, init_script, daemon)
-    
+        
+        init_script = "net"
+        init_cmd = [init_script, op, "pbs_mom"]
+        msg = 'running init script to ' + op + ' pbs'
+        if daemon is not None and daemon != 'all':
+            msg += ' ' + daemon
+        msg += ' on ' + hostname
+        if conf_file is not None:
+            msg += ' using ' + conf_file
+        msg += ' init_cmd=%s' % (str(init_cmd))
+        self.logger.info(msg)
+        ret = self.du.run_cmd(hostname, init_cmd, logerr=False)
+        if ret['rc'] != 0:
+            raise PbsInitServicesError(rc=ret['rc'], rv=False,
+                                       msg='\n'.join(ret['err']))
+        else:
+            return ret
+
     def restart(self, hostname=None, init_script=None):
         """
         Run the init script for a restart operation
@@ -1999,89 +1974,8 @@ class PBSInitMoM(PBSInitServices):
         :param init_script: optional path to a PBS init script
         :type init_script: str or None
         """
-        return self.initd(hostname, op='status', init_script=init_script)
+        return self.initd(hostname, op='status', init_script=init_script)        
 
-    def status_mom(self, hostname=None, init_script=None):
-        """
-        Run the init script for a status mom
-
-        :param hostname: hostname on which to status mom
-        :type hostname: str or None
-        :param init_script: optional path to a PBS init script
-        :type init_script: str or None
-        """
-        return self.initd(hostname, op='status', init_script=init_script,
-                          daemon='mom')
-
-    def _unix_initd(self, hostname, op, conf_file, init_script, daemon):
-        """
-        Helper function for initd ``(*nix version)``
-
-        :param hostname: hostname on which init script should run
-        :type hostname: str
-        :param op: Operation on daemons - start, stop, restart or status
-        :op type: str
-        :param conf_file: Optional path to the pbs configuration file
-        :type conf_file: str or None
-        :param init_script: optional path to a PBS init script
-        :type init_script: str or None
-        :param daemon: name of daemon to operate on. one of server, mom,
-                       sched, comm or all
-        :type daemon: str
-        """
-        # init_cmd = copy.copy(self.du.sudo_cmd)
-        # if daemon is not None and daemon != 'all':
-            # conf = self.du.parse_pbs_config(hostname, conf_file)
-            # dconf = {
-                # 'PBS_START_SERVER': 0,
-                # 'PBS_START_MOM': 0,
-                # 'PBS_START_SCHED': 0,
-                # 'PBS_START_COMM': 0
-            # }
-            # 
-            # if daemon == 'mom' and conf.get('PBS_START_MOM', 0) != 0:
-                # dconf['PBS_START_MOM'] = 1
-            # for k, v in dconf.items():
-                # init_cmd += ["%s=%s" % (k, str(v))]
-            # _as = True
-        # else:
-            # fn = None
-            # if (conf_file is not None) and (conf_file != self.dflt_conf_file):
-                # init_cmd += ['PBS_CONF_FILE=' + conf_file]
-                # _as = True
-            # else:
-                # _as = False
-            # conf = self.du.parse_pbs_config(hostname, conf_file)
-        # if (init_script is None) or (not init_script.startswith('/')):
-            # if 'PBS_EXEC' not in conf:
-                # msg = 'Missing PBS_EXEC setting in pbs config'
-                # raise PbsInitServicesError(rc=1, rv=False, msg=msg)
-            # if init_script is None:
-                # init_script = os.path.join(conf['PBS_EXEC'], 'libexec',
-                                        #    'pbs_init.d')
-            # else:
-                # init_script = os.path.join(conf['PBS_EXEC'], 'etc',
-                                        #    init_script)
-            # if not self.du.isfile(hostname, path=init_script, sudo=True):
-                # Could be Type 3 installation where we will not have
-                # PBS_EXEC/libexec/pbs_init.d
-                # return []
-        init_script = "net"
-        init_cmd = [init_script, op, "pbs_mom"]
-        msg = 'running init script to ' + op + ' pbs'
-        if daemon is not None and daemon != 'all':
-            msg += ' ' + daemon
-        msg += ' on ' + hostname
-        if conf_file is not None:
-            msg += ' using ' + conf_file
-        msg += ' init_cmd=%s' % (str(init_cmd))
-        self.logger.info(msg)
-        ret = self.du.run_cmd(hostname, init_cmd, logerr=False)
-        if ret['rc'] != 0:
-            raise PbsInitServicesError(rc=ret['rc'], rv=False,
-                                       msg='\n'.join(ret['err']))
-        else:
-            return ret
 
 class ProcInfo(object):
 

@@ -600,14 +600,24 @@ class SmokeTest(PBSTestSuite):
         """
         # fn = self.du.create_temp_file(hostname=self.server.hostname, asuser=str(TEST_USER))
         # a = {ATTR_stagein: fn + '2@' + self.server.hostname + ':' + fn}
-        stagein_cmd = self.mom.get_stagein_cmd(storage_host=self.server.hostname, asuser=str(TEST_USER))
+        execution_info = {}
+        execution_info['hostname'] = None
+        execution_info['prefix'] = None
+        execution_info['suffix'] = None
+        storage_info = {}
+        storage_info['hostname'] = None
+        storage_info['prefix'] = None
+        storage_info['suffix'] = None
+        stagein_cmd = self.mom.get_stagein_cmd(execution_info, storage_info, asuser=str(TEST_USER))
         a = {ATTR_stagein: stagein_cmd}
         j = Job(TEST_USER, a)
         j.set_sleep_time(2)
         jid = self.server.submit(j)
         self.server.expect(JOB, 'queue', op=UNSET, id=jid, offset=2)
         #a = {ATTR_stageout: fn + '@' + self.server.hostname + ':' + fn + '2'}
-        stageout_cmd = self.mom.get_stageout_cmd(execution_host=self.mom.hostname, storage_host=self.server.hostname, asuser=str(TEST_USER))
+        execution_info['hostname'] = self.mom.hostname
+        storage_info['hostname'] = self.server.hostname
+        stageout_cmd = self.mom.get_stageout_cmd(execution_info, storage_info, asuser=str(TEST_USER))
         a = {ATTR_stageout: stageout_cmd}
         j = Job(TEST_USER, a)
         j.set_sleep_time(2)
@@ -1049,7 +1059,7 @@ class SmokeTest(PBSTestSuite):
         """
 
         self.logger.info("-------------Inside isSuspended; ppid:%s" %(ppid))
-        ret = self.mom.check_suspended_state(self.mom.shortname, ppid)
+        ret = self.mom.is_suspended_state(self.mom.shortname, ppid)
         return ret
         # Put in linux MoM
         # rv = self.mom.pu.get_proc_state(self.mom.shortname, ppid)

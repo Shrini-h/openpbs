@@ -6081,7 +6081,8 @@ class Server(PBSService):
             if submit_dir:
                 os.chdir(submit_dir)
         c = None
-
+        
+        # Get sleep command depending on which Mom the job will run
         if ATTR_executable in obj.attributes and obj.attributes[ATTR_executable] == '/bin/sleep':
             obj.attributes[ATTR_executable] = (list(self.moms.values())[0]).sleep_cmd
         # 1- Submission using the command line tools
