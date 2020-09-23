@@ -730,21 +730,17 @@ class WinMoM(MoM):
         :param launcher: Optional utility to invoke the launch of the service
         :type launcher: str or list or None
         """
-        # Windows Implementation
-        if args is not None or launcher is not None:
-            return super(MoM, self)._start(inst=self, args=args,
-                                           cmd_map=self.conf_to_cmd_map,
-                                           launcher=launcher)
-        else:
-            try:
-                rv = self.pi.start_mom()
-                pid = self._validate_pid()
-                if pid is None:
-                    raise PbsServiceError(rv=False, rc=-1,
-                                          msg="Could not find PID")
-            except PbsInitServicesError as e:
-                raise PbsServiceError(rc=e.rc, rv=e.rv, msg=e.msg)
-            return rv
+        
+        try:
+            rv = self.pi.start_mom()
+            # We can add below logic when the permission error of lock file is solved
+            # pid = self._validate_pid()
+            if pid is None:
+                raise PbsServiceError(rv=False, rc=-1,
+                                      msg="Could not find PID")
+        except PbsInitServicesError as e:
+            raise PbsServiceError(rc=e.rc, rv=e.rv, msg=e.msg)
+        return rv
 
     def stop(self, sig=None):
         """
@@ -768,10 +764,13 @@ class WinMoM(MoM):
         """
         Restart the PBS mom
         """
-        if self.isUp():
-            if not self.stop():
-                return False
-        return self.start()
+        # if self.isUp():
+            # if not self.stop():
+                # return False
+        # return self.start()
+        # We can add above logic when the permission error of lock file is solved
+        cmd = ['net stop pbs_mom && net start pbs_mom']
+        self.du.run_cmd(self.hostname, cmd=cmd)
 
     def log_lines(self, logtype, id=None, n=50, tail=True, starttime=None,
                   endtime=None, host=None):
@@ -1348,6 +1347,12 @@ class WinMoM(MoM):
         """
         return False
 
+    def is_only_linux(self):
+        """
+        Not there in Windows platform
+        """
+        return False
+
     def create_vnode_def(self, name, attrs={}, numnodes=1, sharednode=True,
                          pre='[', post=']', usenatvnode=False, attrfunc=None,
                          vnodes_per_host=1):
@@ -1890,7 +1895,12 @@ class PBSInitMoM(PBSInitServices):
         self.logger.info(msg)
         ret = self.du.run_cmd(hostname, init_cmd, logerr=False)
         if ret['rc'] != 0:
-            raise PbsInitServicesError(rc=ret['rc'], rv=False,
+            if ret['rc'] == 2:
+                msg = '\n'.join(ret['err'])
+                if "The requested service has already been started" in msg:
+                    return
+            else:
+                raise PbsInitServicesError(rc=ret['rc'], rv=False,
                                        msg='\n'.join(ret['err']))
         else:
             return ret

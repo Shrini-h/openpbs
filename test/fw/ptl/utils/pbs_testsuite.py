@@ -161,6 +161,13 @@ def skipOnCpuSet(function):
     return function
 
 
+def runOnlyOnLinux(function):
+    """
+    """
+    function.__run_only_on_linux__ = True
+    return function
+
+
 def requirements(*args, **kwargs):
     """
     Decorator to provide the cluster information required for a particular
@@ -458,6 +465,7 @@ class PBSTestSuite(unittest.TestCase):
         cls.skip_cray_tests()
         cls.skip_shasta_tests()
         cls.skip_cpuset_tests()
+        cls.run_only_on_linux()
 
     def setUp(self):
         if 'skip-setup' in self.conf:
@@ -567,6 +575,23 @@ class PBSTestSuite(unittest.TestCase):
             # skip individual test cases
             for test_item in cls.test_dict.values():
                 if test_item.__dict__.get('__skip_on_cpuset__', False):
+                    test_item.__unittest_skip__ = True
+                    test_item.__unittest_skip_why__ = msg
+
+    @classmethod
+    def run_only_on_linux(cls):
+        if cls.mom.is_only_linux():
+            return
+        msg = 'capability supported only on Linux'
+        if cls.__dict__.get('__run_only_on_linux__', False):
+            # skip all test cases in this test suite
+            for test_item in cls.test_dict.values():
+                test_item.__unittest_skip__ = True
+                test_item.__unittest_skip_why__ = msg
+        else:
+            # skip individual test cases
+            for test_item in cls.test_dict.values():
+                if test_item.__dict__.get('__run_only_on_linux__', False):
                     test_item.__unittest_skip__ = True
                     test_item.__unittest_skip_why__ = msg
 
@@ -1451,6 +1476,7 @@ class PBSTestSuite(unittest.TestCase):
         if not rv:
             self.logger.error('mom ' + mom.hostname + ' is down')
             mom.start()
+            mom.restart()
             msg = 'Failed to restart mom ' + mom.hostname
             self.assertTrue(mom.isUp(), msg)
         mom.pbs_version()

@@ -696,6 +696,12 @@ class MoM(PBSService):
             return True
         else:
             return False
+    
+    def is_only_linux(self):
+        """
+        Not there in Windows platform
+        """
+        return True
 
     def is_cpuset_mom(self):
         """
