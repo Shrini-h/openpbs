@@ -1252,7 +1252,6 @@ class PBSTestSuite(unittest.TestCase):
                     new_pbsconf["PBS_PUBLIC_HOST_NAME"] = localhost
                     restart_pbs = True
 
-            new_pbsconf["PBS_SUPPORTED_AUTH_METHODS"] = "pwd,resvport"
             # Check if existing pbs.conf has more/less entries than the
             # default list
             if len(pbs_conf_val) != len(new_pbsconf):

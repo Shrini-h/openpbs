@@ -99,7 +99,7 @@ class WinMoM(MoM):
 
     def __init__(self, name=None, attrs={}, pbsconf_file=None, snapmap={},
                  snap=None, server=None, db_access=None):
-        
+
         self.path_separator = '\\'
         if server is not None:
             self.server = server
@@ -1236,6 +1236,11 @@ class WinMoM(MoM):
         # Setting this to False for now. We might remove this whole function 
         restart_mom = False
         self.logger.info("----Inside revert_mom_pbs_conf; new_pbsconf`:%s" %(new_pbsconf))
+        server_conf = {'PBS_SUPPORTED_AUTH_METHODS' : 'pwd,resvport'}
+        ret = self.du.set_pbs_config(self.server.hostname, append=True, confs=server_conf)
+        self.server.pbs_conf.update(server_conf)
+
+        self.server.pi.restart()
         if restart_mom:
             self.du.set_pbs_config(self.hostname, fin=self.pbs_conf_file, confs=new_pbsconf,
                                    append=False)
