@@ -52,11 +52,10 @@ def get_mom_obj(name=None, attrs={}, pbsconf_file=None, snapmap={},
 
     du = DshUtils()
     platform = du.get_platform(hostname=name, pyexec="python")
-    print("-------Inside get_mom_obj-----------")
     print("-----Name: %s; Platform: %s" %(name, platform))
 
     if "win32" in platform:
-        return WinMoM(name, attrs, pbsconf_file, snapmap, snap, server, db_access)
+        return WinMoM(name, attrs, pbsconf_file, snapmap, snap, server, db_access, platform)
     else:
         return MoM(name, attrs, pbsconf_file, snapmap, snap, server, db_access)
 
@@ -92,139 +91,32 @@ class WinMoM(MoM):
                        {'dbname':...,'user':...,'port':...}
     :type db_access: str or dictionary
     """
-    dflt_attributes = {}
-    conf_to_cmd_map = {'PBS_MOM_SERVICE_PORT': '-M',
-                       'PBS_MANAGER_SERVICE_PORT': '-R',
-                       'PBS_HOME': '-d'}
+
 
     def __init__(self, name=None, attrs={}, pbsconf_file=None, snapmap={},
-                 snap=None, server=None, db_access=None):
+                 snap=None, server=None, db_access=None, platform=None):
 
         self.path_separator = '\\'
-        if server is not None:
-            self.server = server
-            if snap is None and self.server.snap is not None:
-                snap = self.server.snap
-            if (len(snapmap) == 0) and (len(self.server.snapmap) != 0):
-                snapmap = self.server.snapmap
-        else:
-            self.server = Server(name, pbsconf_file=pbsconf_file,
-                                 db_access=db_access, snap=snap,
-                                 snapmap=snapmap)
 
-        dflt_conf = "C:\Program Files (x86)\PBS\pbs.conf"
-
-        pc = ('"import os;print([False, os.environ[\'PBS_CONF_FILE\']]'
-              '[\'PBS_CONF_FILE\' in os.environ])"')
-        pyexec = 'python'
-        cmd = [pyexec, '-c', pc]
         self.du = DshUtils()
-        ret = self.du.run_cmd(name, cmd, logerr=False)
-        if ((ret['rc'] == 0) and (len(ret['out']) > 0) and
-                (ret['out'][0] != 'False')):
-            dflt_conf = ret['out'][0]
-        pbsconf_file = dflt_conf
-        self.logger.info("-----Inside Mom's _init_; pbsconf_file:%s" %(pbsconf_file))
+        pbsconf_file = self.get_pbs_conf_file(hostname=name)
+        pbs_conf = self.parse_pbs_config(name, pbsconf_file)
+        # self.logger.info("-----Inside Mom's _init_; pbsconf_file:%s" %(pbsconf_file))
+        # self.logger.info("-----Inside Mom's _init_; pbs_conf:%s" %(pbs_conf))
 
-        # PBSService.__init__(self, name, attrs, self.dflt_attributes,
-                            # pbsconf_file, snap=snap, snapmap=snapmap)
-        self.pbsservice_init(name, attrs, self.dflt_attributes,
-                            pbsconf_file, snap=snap, snapmap=snapmap)
+        MoM.__init__(self, name=name, attrs=attrs, pbsconf_file=pbsconf_file, snapmap=snapmap,
+                     snap=snap, server=server, db_access=db_access,
+                     pbs_conf=pbs_conf, platform=platform)
 
-        _m = ['mom ', self.shortname]
-        if pbsconf_file is not None:
-            _m += ['@', pbsconf_file]
-        _m += [': ']
-        self.logprefix = "".join(_m)
-        
-        # Windows Implementation of InitServices
-        self.pi = PBSInitMoM(hostname=self.hostname,
-                                  conf=self.pbs_conf_file)
+        # Should we pass it to Mom's init so that it passes to PBSInitServices init ?
+        self.dflt_conf_file = "C:\Program Files (x86)\PBS\pbs.conf"
         self.configd = self.path_separator.join([self.pbs_conf['PBS_HOME'], 'mom_priv',
                                     'config.d'])
-        self.config = {}
-        self.dflt_config = {'$clienthost': self.server.hostname}
-        self.version = None
-        self._is_cpuset_mom = None
-
-        # If this is true, the mom will revert to default.
-        # This is true by default, but can be set to False if
-        # required by a test
-        self.revert_to_default = True
-        self.du = DshUtils()
-        self.processes = {}
-        self.sleep_cmd = 'pbs_sleep'
-        self.user_home_dir = self.get_user_dir(self.hostname, 'home')
-        self.user_temp_dir = self.get_user_dir(self.hostname, 'temp')
-
-    def __del__(self):
-        del self.__dict__
-    
-    def pbsservice_init(self, name=None, attrs=None, defaults=None, pbsconf_file=None,
-                        snapmap=None, snap=None):
-        if attrs is None:
-            attrs = {}
-        if defaults is None:
-            defaults = {}
-        if name is None:
-            self.hostname = socket.gethostname()
-        else:
-            self.hostname = name
         
+        # Windows Implementation of InitServices
+        self.pi = PBSInitMoM(hostname=self.hostname, conf=self.pbs_conf_file)
 
-        self.fqdn = self.hostname
-        self.shortname = self.hostname.split('.')[0]
-        self.platform = self.du.get_platform()
-
-        self.logutils = None
-        self.logfile = None
-        self.acctlogfile = None
-        self.pbs_conf = {}
-        self.pbs_env = {}
-        # setting _is_local to False by default as MoM will
-        # be a different machine always
-        self._is_local = False
-        self.launcher = None
-        self.dyn_created_files = []
-        self.saved_config = {}
-
-        PBSObject.__init__(self, name, attrs, defaults)
-
-        self.pbs_conf_file = pbsconf_file
-
-        if self.pbs_conf_file == '/etc/pbs.conf':
-            self.default_pbs_conf = True
-        elif (('PBS_CONF_FILE' not in os.environ) or
-              (os.environ['PBS_CONF_FILE'] != self.pbs_conf_file)):
-            self.default_pbs_conf = False
-        else:
-            self.default_pbs_conf = True
-
-        # default pbs_server_name to hostname, it will get set again once the
-        # config file is processed
-        self.pbs_server_name = self.hostname
-
-        rv = self.print_file(self.hostname, self.pbs_conf_file)
-        # implementation of _parse_file
-        try:
-            props = {}
-            for l in rv['out']:
-                if l.find('=') != -1 and l[0] != '#':
-                    c = l.split('=')
-                    props[c[0]] = c[1].strip()
-        except BaseException:
-            self.logger.error('error parsing file ' + str(file))
-            self.logger.error(traceback.print_exc())
-        self.pbs_conf = props
-
-        if self.pbs_conf is None or len(self.pbs_conf) == 0:
-            self.pbs_conf = {'PBS_HOME': "", 'PBS_EXEC': ""}
-        else:
-            ef = self.path_separator.join([self.pbs_conf['PBS_HOME'], 'pbs_environment'])
-            # self.pbs_env = self.du.parse_pbs_environment(self.hostname, ef)
-            self.pbs_server_name = self.du.get_pbs_server_name(
-                self.pbs_conf)
-
+        self.sleep_cmd = 'pbs_sleep'
         # Implement init_logfile_path 
         # Initialize path to log files for Mom
         # This will want the date for Server and MoM machine to be synced
@@ -232,6 +124,10 @@ class WinMoM(MoM):
         if self.pbs_conf is not None and 'PBS_HOME' in self.pbs_conf:
             tm = time.strftime("%Y%m%d", time.localtime())
             self.logfile = self.path_separator.join([self.pbs_conf['PBS_HOME'], 'mom_logs', tm])
+        self.processes = {}
+        self.user_home_dir = self.get_user_dir(self.hostname, 'home')
+        self.user_temp_dir = self.get_user_dir(self.hostname, 'temp')
+
 
     def get_user_dir(self, hostname=None, directory=None, user=None):
         """
@@ -254,11 +150,42 @@ class WinMoM(MoM):
         else:
             return ret['err']
 
+    def get_pbs_conf_file(self, hostname=''):
+        
+        dflt_conf = "C:\Program Files (x86)\PBS\pbs.conf"
+
+        pc = ('"import os;print([False, os.environ[\'PBS_CONF_FILE\']]'
+              '[\'PBS_CONF_FILE\' in os.environ])"')
+        pyexec = 'python'
+        cmd = [pyexec, '-c', pc]
+        ret = self.du.run_cmd(hostname, cmd, logerr=False)
+        if ((ret['rc'] == 0) and (len(ret['out']) > 0) and
+                (ret['out'][0] != 'False')):
+            dflt_conf = ret['out'][0]
+        
+        return dflt_conf
+    
+    def parse_pbs_config(self, hostname=None, pbsconf_file=None):
+        """
+        """
+        # Implementation of parse_file
+        rv = self.get_file_content(hostname, pbsconf_file)
+        try:
+            props = {}
+            for l in rv['out']:
+                if l.find('=') != -1 and l[0] != '#':
+                    c = l.split('=')
+                    props[c[0]] = c[1].strip()
+        except BaseException:
+            self.logger.error('error parsing file ' + str(file))
+            self.logger.error(traceback.print_exc())
+        pbs_conf = props
+        return pbs_conf
 
     def _init_processes(self):
         self.processes = {}
     
-    def print_file(self, hostname=None, path=None):
+    def get_file_content(self, hostname=None, path=None):
         """
         """
         if hostname is None:
@@ -268,11 +195,11 @@ class WinMoM(MoM):
             return None
         path = '"' + path + '"'
         cmd = ['type', path]
-        rv = self.du.run_cmd(self.hostname, cmd=cmd)
+        rv = self.du.run_cmd(hostname, cmd=cmd)
         return rv
 
         
-    def delete_file(self, hostname=None, path=None, sudo=False, runas=None,
+    def delete_file(self, hostname=None, path=None, runas=None,
            recursive=False, force=False, cwd=None, logerr=True,
            as_script=False, level=logging.INFOCLI2):
         """
@@ -284,9 +211,6 @@ class WinMoM(MoM):
                      for more than one files or directories pass as
                      list
         :type path: str or None
-        :param sudo: whether to remove files or directories as root
-                     or not.Defaults to False
-        :type sudo: boolean
         :param runas: remove files or directories as given user
                       Defaults to calling user
         :param recursive: remove files or directories and their
@@ -377,30 +301,29 @@ class WinMoM(MoM):
             if asuser.host:
                 hostname = asuser.host
 
-        destination = None
-        # if temp file to be created on remote host
-        if not self.du.is_localhost(hostname):
-            destination = self.get_user_dir(hostname, 'temp', asuser)
-            filename = tmpfile.split('/')[-1]
-            destination = destination + '\\' + filename
-            if asuser is not None:
-                # by default mkstemp creates file with 0600 permission
-                # to create file as different user first change the file
-                # permission to 0644 so that other user has read permission
-                self.du.chmod(path=tmpfile, mode=0o644)
-                # Changing the ownership here as when stageout happens
-                # the scp fails saying permission error
-                self.du.chown(path=tmpfile, uid=asuser, sudo=True)
-                # copy temp file created  on local host to remote host
-                # as different user
-                self.du.run_copy(hostname, src=tmpfile, dest=destination,
-                              runas=asuser, preserve_permission=False)
-            else:
-                # copy temp file created on localhost to remote as current user
-                self.du.run_copy(hostname, src=tmpfile, dest=destination,
-                              preserve_permission=False)
-                # remove local temp file
-                os.unlink(tmpfile)
+        # For copying file to remote host
+
+        dest_dir = self.get_user_dir(hostname, 'temp', asuser)
+        filename = tmpfile.split('/')[-1]
+        destination = self.path_separator.join([dest_dir, filename])
+        if asuser is not None:
+            # by default mkstemp creates file with 0600 permission
+            # to create file as different user first change the file
+            # permission to 0644 so that other user has read permission
+            self.du.chmod(path=tmpfile, mode=0o644)
+            # Changing the ownership here as when stageout happens
+            # the scp fails saying permission error
+            self.du.chown(path=tmpfile, uid=asuser, sudo=True)
+            # copy temp file created  on local host to remote host
+            # as different user
+            self.du.run_copy(hostname, src=tmpfile, dest=destination,
+                          runas=asuser, preserve_permission=False)
+        else:
+            # copy temp file created on localhost to remote as current user
+            self.du.run_copy(hostname, src=tmpfile, dest=destination,
+                          preserve_permission=False)
+            # remove local temp file
+            os.unlink(tmpfile)
         '''if asuser is not None:
             # by default mkstemp creates file with 0600 permission
             # to create file as different user first change the file
@@ -492,7 +415,7 @@ class WinMoM(MoM):
         self._init_processes()
         return self._get_proc_info(hostname, name, pid, regexp)
 
-    def _all_instance_pids(self):
+    def _all_instance_pids(self, inst):
         """
         Return a list of all ``PIDS`` that match the
         instance name or None.
@@ -508,7 +431,7 @@ class WinMoM(MoM):
             return _pids
         return None
 
-    def _get_pid(self):
+    def _get_pid(self, inst):
         """
         Get the ``PID`` associated to this instance.
         Implementation note, the pid is read from the
@@ -519,7 +442,7 @@ class WinMoM(MoM):
         with ``_get_pid`` but not with ``_all_instance_pids``
         """
         path = self.path_separator.join([self.pbs_conf['PBS_HOME'], 'mom_priv', 'mom.lock'])
-        rv = self.print_file(self.hostname, path)
+        rv = self.get_file_content(self.hostname, path)
         if ((rv['rc'] == 0) and (len(rv['out']) > 0)):
             pid = rv['out'][0].strip()
         else:
@@ -622,43 +545,6 @@ class WinMoM(MoM):
             return False
         return True
 
-    def _isUp(self, inst):
-        """
-        returns True if MoM service is up and False otherwise
-        """
-        live_pids = self._all_instance_pids()
-        pid = self._get_pid()
-        if live_pids is not None and pid in live_pids:
-            return True
-        return False
-
-    def isUp(self, max_attempts=None):
-        """
-        Check for PBS mom up
-        """
-        # Poll for few seconds to see if mom is up and node is free
-        if max_attempts is None:
-            max_attempts = self.ptl_conf['max_attempts']
-        for _ in range(max_attempts):
-            rv = self._isUp(self)
-            if rv:
-                break
-            time.sleep(1)
-        if rv:
-            try:
-                nodes = self.server.status(NODE, id=self.shortname)
-                if nodes:
-                    attr = {'state': (MATCH_RE,
-                                      'free|provisioning|offline|job-busy')}
-                    self.server.expect(NODE, attr, id=self.shortname)
-            # Ignore PbsStatusError if mom daemon is up but there aren't
-            # any mom nodes
-            except PbsStatusError:
-                pass
-            except PtlExpectError:
-                rv = False
-        return rv
-
     def _signal(self, sig, inst=None, procname=None):
         """
         Send signal ``sig`` to service. sig is the signal name
@@ -673,7 +559,7 @@ class WinMoM(MoM):
         :type procname: str or None
         """
 
-        pid = self._get_pid()
+        pid = self._get_pid(inst=inst)
 
         cmd = ['taskkill', '/F', '/PID']
         if procname is not None:
@@ -682,7 +568,7 @@ class WinMoM(MoM):
                 for _p in list(pi.values())[0]:
                     cmd += [_p.pid]
                     if sig is '-HUP':
-                        cmd += ['&', 'net start pbs_mom']
+                        cmd += ['&&', 'net start pbs_mom']
                     ret = self.du.run_cmd(self.hostname, cmd)
                 return ret
 
@@ -713,52 +599,13 @@ class WinMoM(MoM):
         Get the PBS mom pid
         """
         # Windows Implementation
-        return super(MoM, self)._get_pid()
+        return self._get_pid()
 
     def all_instance_pids(self):
         """
         Get all pids of a instance
         """
-        return super(MoM, self)._all_instance_pids(inst=self)
-
-    def start(self, args=None, launcher=None):
-        """
-        Start the PBS mom
-
-        :param args: Arguments to start the mom
-        :type args: str or None
-        :param launcher: Optional utility to invoke the launch of the service
-        :type launcher: str or list or None
-        """
-        
-        try:
-            rv = self.pi.start_mom()
-            # We can add below logic when the permission error of lock file is solved
-            # pid = self._validate_pid()
-            if pid is None:
-                raise PbsServiceError(rv=False, rc=-1,
-                                      msg="Could not find PID")
-        except PbsInitServicesError as e:
-            raise PbsServiceError(rc=e.rc, rv=e.rv, msg=e.msg)
-        return rv
-
-    def stop(self, sig=None):
-        """
-        Stop the PBS mom
-
-        :param sig: Signal to stop the PBS mom
-        :type sig: str
-        """
-        if sig is not None:
-            self.logger.info(self.logprefix + 'stopping MoM on host ' +
-                             self.hostname)
-            return super(MoM, self)._stop(sig, inst=self)
-        else:
-            try:
-                self.pi.stop_mom()
-            except PbsInitServicesError as e:
-                raise PbsServiceError(rc=e.rc, rv=e.rv, msg=e.msg)
-            return True
+        return self._all_instance_pids(inst=self)
 
     def restart(self):
         """
@@ -835,7 +682,7 @@ class WinMoM(MoM):
                     filename = self.path_separator.join([logdir, day])
                     self.logger.info("-----Inside log_lines, filename=%s" %(filename))
                     if n == 'ALL':
-                        day_lines = self.print_file(self.hostname, filename)['out']
+                        day_lines = self.get_file_content(self.hostname, filename)['out']
                     else:
                         if tail:
                             cmd = ['/usr/bin/tail']
@@ -860,200 +707,6 @@ class WinMoM(MoM):
             return None
 
         return lines
-
-    def _log_match(self, logtype, msg, id=None, n=50, tail=True,
-                   allmatch=False, regexp=False, max_attempts=None,
-                   interval=None, starttime=None, endtime=None,
-                   level=logging.INFO, existence=True):
-        """
-        Match given ``msg`` in given ``n`` lines of log file
-
-        :param logtype: The entity requested, an instance of a
-                        Scheduler, Server, or MoM object, or the
-                        strings 'tracejob' for tracejob or
-                        'accounting' for accounting logs.
-        :type logtype: object
-        :param msg: log message to match, can be regex also when
-                    ``regexp`` is True
-        :type msg: str
-        :param id: The id of the object to trace. Only used for
-                   tracejob
-        :type id: str
-        :param n: 'ALL' or the number of lines to search through,
-                  defaults to 50
-        :type n: str or int
-        :param tail: If true (default), starts from the end of
-                     the file
-        :type tail: bool
-        :param allmatch: If True all matching lines out of then
-                         parsed are returned as a list. Defaults
-                         to False
-        :type allmatch: bool
-        :param regexp: If true msg is a Python regular expression.
-                       Defaults to False
-        :type regexp: bool
-        :param max_attempts: the number of attempts to make to find
-                             a matching entry
-        :type max_attempts: int
-        :param interval: the interval between attempts
-        :type interval: int
-        :param starttime: If set ignore matches that occur before
-                          specified time
-        :type starttime: float
-        :param endtime: If set ignore matches that occur after
-                        specified time
-        :type endtime: float
-        :param level: The logging level, defaults to INFO
-        :type level: int
-        :param existence: If True (default), check for existence of
-                        given msg, else check for non-existence of
-                        given msg.
-        :type existence: bool
-
-        :return: (x,y) where x is the matching line
-                 number and y the line itself. If allmatch is True,
-                 a list of tuples is returned.
-        :rtype: tuple
-        :raises PtlLogMatchError:
-                When ``existence`` is True and given
-                ``msg`` is not found in ``n`` line
-                Or
-                When ``existence`` is False and given
-                ``msg`` found in ``n`` line.
-
-        .. note:: The matching line number is relative to the record
-                  number, not the absolute line number in the file.
-        """
-        try:
-            from ptl.utils.pbs_logutils import PBSLogUtils
-        except:
-            _msg = 'error loading ptl.utils.pbs_logutils'
-            raise ImportError(_msg)
-
-        if self.logutils is None:
-            self.logutils = PBSLogUtils()
-        if max_attempts is None:
-            max_attempts = self.ptl_conf['max_attempts']
-        if interval is None:
-            interval = self.ptl_conf['attempt_interval']
-        rv = (None, None)
-        attempt = 1
-        lines = None
-        name = self._instance_to_servicename(logtype)
-        infomsg = (name + ' ' + self.shortname +
-                   ' log match: searching for "' + msg + '"')
-        if regexp:
-            infomsg += ' - using regular expression '
-        if allmatch:
-            infomsg += ' - on all matches '
-        if existence:
-            infomsg += ' - with existence'
-        else:
-            infomsg += ' - with non-existence'
-        attemptmsg = ' - No match'
-        while attempt <= max_attempts:
-            if attempt > 1:
-                attemptmsg = ' - attempt ' + str(attempt)
-            lines = self.log_lines(logtype, id, n=n, tail=tail,
-                                   starttime=starttime, endtime=endtime)
-            rv = self.logutils.match_msg(lines, msg, allmatch=allmatch,
-                                         regexp=regexp, starttime=starttime,
-                                         endtime=endtime)
-            if not existence:
-                if rv:
-                    _msg = infomsg + ' - but exists'
-                    #raise PtlLogMatchError(rc=1, rv=False, msg=_msg)
-                else:
-                    self.logger.log(level, infomsg + attemptmsg + '... OK')
-                    break
-            if rv:
-                self.logger.log(level, infomsg + '... OK')
-                break
-            else:
-                if n != 'ALL':
-                    if attempt > max_attempts:
-                        # We will do one last attempt to match in case the
-                        # number of lines that were provided did not capture
-                        # the start or end time of interest
-                        max_attempts += 1
-                    n = 'ALL'
-                self.logger.log(level, infomsg + attemptmsg)
-            attempt += 1
-            time.sleep(interval)
-        try:
-            # Depending on whether the hostname is local or remote and whether
-            # sudo privileges were required, lines returned by log_lines can be
-            # an open file descriptor, we close here but ignore errors in case
-            # any were raised for all irrelevant cases
-            lines.close()
-        except:
-            pass
-        if (rv is None and existence):
-            _msg = infomsg + attemptmsg
-            raise PtlLogMatchError(rc=1, rv=False, msg=_msg)
-        return rv
-
-    def log_match(self, msg=None, id=None, n='ALL', tail=True, allmatch=False,
-                  regexp=False, max_attempts=None, interval=None,
-                  starttime=None, endtime=None, level=logging.INFO,
-                  existence=True):
-        """
-        Match given ``msg`` in given ``n`` lines of MoM log
-
-        :param msg: log message to match, can be regex also when
-                    ``regexp`` is True
-        :type msg: str
-        :param id: The id of the object to trace. Only used for
-                   tracejob
-        :type id: str
-        :param n: 'ALL' or the number of lines to search through,
-                  defaults to 50
-        :type n: str or int
-        :param tail: If true (default), starts from the end of
-                     the file
-        :type tail: bool
-        :param allmatch: If True all matching lines out of then
-                         parsed are returned as a list. Defaults
-                         to False
-        :type allmatch: bool
-        :param regexp: If true msg is a Python regular expression.
-                       Defaults to False
-        :type regexp: bool
-        :param max_attempts: the number of attempts to make to find
-                             a matching entry
-        :type max_attempts: int
-        :param interval: the interval between attempts
-        :type interval: int
-        :param starttime: If set ignore matches that occur before
-                          specified time
-        :type starttime: float
-        :param endtime: If set ignore matches that occur after
-                        specified time
-        :type endtime: float
-        :param level: The logging level, defaults to INFO
-        :type level: int
-        :param existence: If True (default), check for existence of
-                        given msg, else check for non-existence of
-                        given msg.
-        :type existence: bool
-
-        :return: (x,y) where x is the matching line
-                 number and y the line itself. If allmatch is True,
-                 a list of tuples is returned.
-        :rtype: tuple
-        :raises PtlLogMatchError:
-                When ``existence`` is True and given
-                ``msg`` is not found in ``n`` line
-                Or
-                When ``existence`` is False and given
-                ``msg`` found in ``n`` line.
-
-        .. note:: The matching line number is relative to the record
-                  number, not the absolute line number in the file.
-        """
-        return self._log_match(self, msg, id, n, tail, allmatch, regexp,
-                               max_attempts, interval, starttime, endtime,
-                               level, existence)
 
     def pbs_version(self):
         """
@@ -1084,29 +737,6 @@ class WinMoM(MoM):
         self.version = LooseVersion(version)
 
         return self.version
-
-    def delete_vnodes(self):
-        rah = ATTR_rescavail + '.host'
-        rav = ATTR_rescavail + '.vnode'
-        a = {rah: self.hostname, rav: None}
-        try:
-            _vs = self.server.status(HOST, a, id=self.hostname)
-        except PbsStatusError:
-            try:
-                _vs = self.server.status(HOST, a, id=self.shortname)
-            except PbsStatusError as e:
-                err_msg = e.msg[0].rstrip()
-                if (err_msg.endswith('Server has no node list') or
-                        err_msg.endswith('Unknown node')):
-                    _vs = []
-                else:
-                    raise e
-        vs = []
-        for v in _vs:
-            if v[rav].split('.')[0] != v[rah].split('.')[0]:
-                vs.append(v['id'])
-        if len(vs) > 0:
-            self.server.manager(MGR_CMD_DELETE, VNODE, id=vs)
 
     def _get_dflt_pbsconfval(self, conf, svr_hostname, hosttype, hostobj):
         """
@@ -1250,42 +880,6 @@ class WinMoM(MoM):
             if not self.isUp():
                 self.fail("Mom is not up")
 
-    def revert_to_defaults(self, delvnodedefs=True):
-        """
-        1. ``Revert MoM configuration to defaults.``
-
-        2. ``Remove epilogue and prologue``
-
-        3. ``Delete all vnode definitions
-        HUP MoM``
-
-        :param delvnodedefs: if True (the default) delete all vnode
-                             definitions and restart the MoM
-        :type delvnodedefs: bool
-
-        :returns: True on success and False otherwise
-        """
-        self.logger.info(self.logprefix +
-                         'reverting configuration to defaults')
-        restart = False
-        if not self.has_snap:
-            self.delete_pelog()
-            if delvnodedefs and self.has_vnode_defs():
-                restart = True
-                if not self.delete_vnode_defs():
-                    return False
-                self.delete_vnodes()
-            if not (self.config == self.dflt_config):
-                # Clear older mom configuration. Apply default.
-                self.config = {}
-                self.apply_config(self.dflt_config, hup=False, restart=True)
-            if restart:
-                self.restart()
-            else:
-                self.signal('-HUP')
-            return self.isUp()
-        return True
-
     def save_configuration(self, outfile=None, mode='w'):
         """
         Save a MoM ``mom_priv/config``
@@ -1334,18 +928,6 @@ class WinMoM(MoM):
         self.signal('-HUP')
         return rv
 
-    def is_cray(self):
-        """
-        Not there in Windows platform
-        """
-        return False
-
-    def is_shasta(self):
-        """
-        Not there in Windows platform
-        """
-        return False
-
     def is_cpuset_mom(self):
         """
         Not there in Windows platforms
@@ -1357,106 +939,6 @@ class WinMoM(MoM):
         Not there in Windows platform
         """
         return False
-
-    def create_vnode_def(self, name, attrs={}, numnodes=1, sharednode=True,
-                         pre='[', post=']', usenatvnode=False, attrfunc=None,
-                         vnodes_per_host=1):
-        """
-        Create a vnode definition string representation
-
-        :param name: The prefix for name of vnode to create,
-                     name of vnode will be prefix + pre + <num> +
-                     post
-        :type name: str
-        :param attrs: Dictionary of attributes to set on each vnode
-        :type attrs: Dictionary
-        :param numnodes: The number of vnodes to create
-        :type numnodes: int
-        :param sharednode: If true vnodes are shared on a host
-        :type sharednode: bool
-        :param pre: The symbol preceding the numeric value of that
-                    vnode.
-        :type pre: str
-        :param post: The symbol following the numeric value of that
-                     vnode.
-        :type post: str
-        :param usenatvnode: use the natural vnode as the first vnode
-                            to allocate this only makes sense
-                            starting with PBS 11.3 when natural
-                            vnodes are reported as a allocatable
-        :type usenatvnode: bool
-        :param attrfunc: function to customize the attributes,
-                         signature is (name, numnodes, curnodenum,
-                         attrs), must return a dict that contains
-                         new or modified attrs that will be added to
-                         the vnode def. The function is called once
-                         per vnode being created, it does not modify
-                         attrs itself across calls.
-        :param vnodes_per_host: number of vnodes per host
-        :type vnodes_per_host: int
-        :returns: A string representation of the vnode definition
-                  file
-        """
-        sethost = False
-
-        attribs = attrs.copy()
-        if not sharednode and 'resources_available.host' not in attrs:
-            sethost = True
-
-        if attrfunc is None:
-            customattrs = attribs
-
-        vdef = ["$configversion 2"]
-
-        # altering the natural vnode information
-        if numnodes == 0:
-            for k, v in attribs.items():
-                vdef += [name + ": " + str(k) + "=" + str(v)]
-        else:
-            if usenatvnode:
-                if attrfunc:
-                    customattrs = attrfunc(name, numnodes, "", attribs)
-                for k, v in customattrs.items():
-                    vdef += [self.shortname + ": " + str(k) + "=" + str(v)]
-                # account for the use of the natural vnode
-                numnodes -= 1
-            else:
-                # ensure that natural vnode is not allocatable by the scheduler
-                vdef += [self.shortname + ": resources_available.ncpus=0"]
-                vdef += [self.shortname + ": resources_available.mem=0"]
-
-        for n in range(numnodes):
-            vnid = name + pre + str(n) + post
-            if sethost:
-                if vnodes_per_host > 1:
-                    if n % vnodes_per_host == 0:
-                        _nid = vnid
-                    else:
-                        _nid = name + pre + str(n - n % vnodes_per_host) + post
-                    attribs['resources_available.host'] = _nid
-                else:
-                    attribs['resources_available.host'] = vnid
-
-            if attrfunc:
-                customattrs = attrfunc(vnid, numnodes, n, attribs)
-            for k, v in customattrs.items():
-                vdef += [vnid + ": " + str(k) + "=" + str(v)]
-
-        if numnodes == 0:
-            nn = 1
-        else:
-            nn = numnodes
-        if numnodes > 1:
-            vnn_msg = ' vnodes '
-        else:
-            vnn_msg = ' vnode '
-
-        self.logger.info(self.logprefix + 'created ' + str(nn) +
-                         vnn_msg + name + ' with attr ' +
-                         str(attribs) + ' on host ' + self.hostname)
-        vdef += ["\n"]
-        del attribs
-        return "\n".join(vdef)
 
     def add_checkpoint_abort_script(self, dirname=None, body=None,
                                     abort_time=30):
@@ -1473,14 +955,6 @@ class WinMoM(MoM):
              str(abort_time) + ' !' + chk_file + ' %sid'}
         self.add_config(c)
         return chk_file
-
-    def add_restart_script(self, dirname=None, body=None,
-                           abort_time=30):
-        """
-        Only been used in one cgroups test
-        Not valid for Windows Platform
-        """
-        return None
 
     def parse_config(self):
         """
@@ -1519,62 +993,6 @@ class WinMoM(MoM):
 
         return self.config
 
-    def add_config(self, conf={}, hup=True):
-        """
-        Add config options to mom_priv_config.
-
-        :param conf: The configurations to add to ``mom_priv/config``
-        :type conf: Dictionary
-        :param hup: If True (default) ``HUP`` the MoM
-        :type hup: bool
-        :returns: True on success and False otherwise
-        """
-
-        doconfig = False
-
-        if not self.config:
-            self.parse_config()
-
-        mc = self.config
-
-        if mc is None:
-            mc = {}
-
-        for k, v in conf.items():
-            if k in mc and (mc[k] == v or (isinstance(v, list) and
-                                           mc[k] in v)):
-                self.logger.debug(self.logprefix + 'config ' + k +
-                                  ' already set to ' + str(v))
-                continue
-            else:
-                doconfig = True
-                break
-
-        if not doconfig:
-            return True
-
-        self.logger.info(self.logprefix + "config " + str(conf))
-
-        return self.apply_config(conf, hup)
-
-    def unset_mom_config(self, name, hup=True):
-        """
-        Delete a mom_config entry
-
-        :param name: The entry to remove from ``mom_priv/config``
-        :type name: String
-        :param hup: if True (default) ``HUP`` the MoM
-        :type hup: bool
-        :returns: True on success and False otherwise
-        """
-        mc = self.parse_config()
-        if mc is None or name not in mc:
-            return True
-        self.logger.info(self.logprefix + "unsetting config " + name)
-        del mc[name]
-
-        return self.apply_config(mc, hup)
-
     def apply_config(self, conf={}, hup=True, restart=False):
         """
         Apply configuration options to MoM.
@@ -1612,16 +1030,6 @@ class WinMoM(MoM):
             return self.signal('-HUP')
 
         return True
-
-    def get_vnode_def(self, vnodefile=None):
-        """
-        :returns: A vnode def file as a single string
-        """
-        if vnodefile is None:
-            return None
-        with open(vnodefile) as f:
-            lines = f.readlines()
-        return "".join(lines)
 
     def insert_vnode_def(self, vdef, fname=None, additive=False, restart=True):
         """
@@ -1742,18 +1150,6 @@ class WinMoM(MoM):
             return True
         return False
 
-    def has_prologue(self):
-        """
-        Check for prologue
-        """
-        return self.has_pelog('prolouge')
-
-    def has_epilogue(self):
-        """
-        Check for epilogue
-        """
-        return self.has_pelog('epilogue')
-
     def delete_pelog(self):
         """
         Delete any prologue and epilogue files that may have been
@@ -1816,30 +1212,6 @@ class WinMoM(MoM):
         ret = self.du.chmod(self.hostname, path=pelog, mode=0o755, sudo=True)
         return ret
 
-    def prologue(self, body=None, src=None):
-        """
-        create prologue
-        """
-        return self.create_pelog(body, src, 'prologue')
-
-    def epilogue(self, body=None, src=None):
-        """
-        Create epilogue
-        """
-        return self.create_pelog(body, src, 'epilogue')
-
-    def action(self, act, script):
-        """
-        Define action script. Not currently implemented
-        """
-        pass
-
-    def enable_cgroup_cset(self):
-        """
-        Not valid for Windows Platform
-        """
-        return None
-        
 
 from ptl.lib.pbs_testlib import PBSInitServices
 
@@ -1854,17 +1226,10 @@ class PBSInitMoM(PBSInitServices):
     """
 
     def __init__(self, hostname=None, conf=None):
-        self.logger = logging.getLogger(__name__)
-        self.hostname = hostname
-        if self.hostname is None:
-            self.hostname = socket.gethostname()
-        if conf is None:
-            self.dflt_conf_file = "C:\Program Files (x86)\PBS\pbs.conf"
-        else:
-            self.dflt_conf_file = conf
-        self.conf_file = conf
-        self.du = DshUtils()
-        # self.is_linux = sys.platform.startswith('linux')
+        
+        super(PBSInitMoM, self).__init__(hostname, conf)
+        self.dflt_conf_file = "C:\Program Files (x86)\PBS\pbs.conf"
+        
 
     def initd(self, hostname=None, op='start', conf_file=None,
               init_script=None, daemon='all'):
@@ -1909,87 +1274,6 @@ class PBSInitMoM(PBSInitServices):
                                        msg='\n'.join(ret['err']))
         else:
             return ret
-
-    def restart(self, hostname=None, init_script=None):
-        """
-        Run the init script for a restart operation
-
-        :param hostname: hostname on which to execute the init script
-        :type hostname: str or None
-        :param init_script: optional path to a PBS init script
-        :type init_script: str or None
-        """
-        return self.initd(hostname, op='restart', init_script=init_script)
-
-    def restart_mom(self, hostname=None, init_script=None):
-        """
-        Run the init script for a restart mom
-
-        :param hostname: hostname on which to restart mom
-        :type hostname: str or None
-        :param init_script: optional path to a PBS init script
-        :type init_script: str or None
-        """
-        return self.initd(hostname, op='restart', init_script=init_script,
-                          daemon='mom')
-
-    def start(self, hostname=None, init_script=None):
-        """
-        Run the init script for a start operation
-
-        :param hostname: hostname on which to execute the init script
-        :type hostname: str or None
-        :param init_script: optional path to a PBS init script
-        :type init_script: str or None
-        """
-        return self.initd(hostname, op='start', init_script=init_script)
-
-    def start_mom(self, hostname=None, init_script=None):
-        """
-        Run the init script for a start mom
-
-        :param hostname: hostname on which to start mom
-        :type hostname: str or None
-        :param init_script: optional path to a PBS init script
-        :type init_script: str or None
-        """
-        return self.initd(hostname, op='start', init_script=init_script,
-                          daemon='mom')
-
-    def stop(self, hostname=None, init_script=None):
-        """
-        Run the init script for a stop operation
-
-        :param hostname: hostname on which to execute the init script
-        :type hostname: str or None
-        :param init_script: optional path to a PBS init script
-        :type init_script: str or None
-        """
-        return self.initd(hostname, op='stop', init_script=init_script)
-
-
-    def stop_mom(self, hostname=None, init_script=None):
-        """
-        Run the init script for a stop mom
-
-        :param hostname: hostname on which to stop mom
-        :type hostname: str or None
-        :param init_script: optional path to a PBS init script
-        :type init_script: str or None
-        """
-        return self.initd(hostname, op='stop', init_script=init_script,
-                          daemon='mom')
-
-    def status(self, hostname=None, init_script=None):
-        """
-        Run the init script for a status operation
-
-        :param hostname: hostname on which to execute the init script
-        :type hostname: str or None
-        :param init_script: optional path to a PBS init script
-        :type init_script: str or None
-        """
-        return self.initd(hostname, op='status', init_script=init_script)        
 
 
 class ProcInfo(object):

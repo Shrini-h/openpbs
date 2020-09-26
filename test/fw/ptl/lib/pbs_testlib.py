@@ -3446,7 +3446,7 @@ class PBSService(PBSObject):
     pu = ProcUtils()
 
     def __init__(self, name=None, attrs=None, defaults=None, pbsconf_file=None,
-                 snapmap=None, snap=None):
+                 snapmap=None, snap=None, pbs_conf=None, platform=None):
         if attrs is None:
             attrs = {}
         if defaults is None:
@@ -3482,7 +3482,10 @@ class PBSService(PBSObject):
             self.fqdn = self.hostname
 
         self.shortname = self.hostname.split('.')[0]
-        self.platform = self.du.get_platform()
+        if platform is None:
+            self.platform = self.du.get_platform()
+        else:
+            self.platform = platform
 
         self.logutils = None
         self.logfile = None
@@ -3530,6 +3533,9 @@ class PBSService(PBSObject):
             if m:
                 tm = time.strptime(m.group('datetime'), "%y%m%d_%H%M%S")
                 self.ctime = int(time.mktime(tm))
+        elif pbs_conf is not None:
+            self.pbs_conf = pbs_conf
+            self.pbs_server_name = self.du.get_pbs_server_name(self.pbs_conf)
         else:
             self.pbs_conf = self.du.parse_pbs_config(self.hostname,
                                                      self.pbs_conf_file)

@@ -116,7 +116,7 @@ class MoM(PBSService):
                        'PBS_HOME': '-d'}
 
     def __init__(self, name=None, attrs={}, pbsconf_file=None, snapmap={},
-                 snap=None, server=None, db_access=None):
+                 snap=None, server=None, db_access=None, pbs_conf=None, platform=None):
         if server is not None:
             self.server = server
             if snap is None and self.server.snap is not None:
@@ -129,7 +129,8 @@ class MoM(PBSService):
                                  snapmap=snapmap)
 
         PBSService.__init__(self, name, attrs, self.dflt_attributes,
-                            pbsconf_file, snap=snap, snapmap=snapmap)
+                            pbsconf_file, snap=snap, snapmap=snapmap,
+                            pbs_conf=pbs_conf, platform=platform)
         _m = ['mom ', self.shortname]
         if pbsconf_file is not None:
             _m += ['@', pbsconf_file]
