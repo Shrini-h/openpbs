@@ -850,6 +850,9 @@ class PTLTestRunner(Plugin):
         systems.extend(self.param_dict['comms'])
         systems = list(set(systems))
         for hostname in systems:
+            platform = du.get_platform(hostname, pyexec='python')
+            if platform != 'linux' or platform != 'shasta' or platform != 'cray':
+                return
             hr = SystemInfo()
             hr.get_system_info(hostname)
             # monitors disk
@@ -945,7 +948,7 @@ class PTLTestRunner(Plugin):
             self.result.startTest(test)
             raise SkipTest(rv)
         # function report hardware status and core files
-        # self.check_hardware_status_and_core_files()
+        self.check_hardware_status_and_core_files()
 
         def timeout_handler(signum, frame):
             raise TimeOut('Timed out after %s second' % timeout)

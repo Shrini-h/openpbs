@@ -1717,7 +1717,7 @@ class PTLTestDb(Plugin):
         else:
             testdata['pbs_version'] = 'unknown'
             testdata['hostname'] = 'unknown'
-        # testdata['machinfo'] = self.__get_machine_info(_test)
+        testdata['machinfo'] = self.__get_machine_info(_test)
         testdata['testparam'] = getattr(_test, 'param', None)
         testdata['suite'] = sn
         testdata['suitedoc'] = str(_test.__class__.__doc__)
@@ -1791,8 +1791,8 @@ class PTLTestDb(Plugin):
                 if hst not in machines:
                     machines[hst] = {}
                     mshort = machines[hst]
-                    mshort['platform'] = self.__du.get_uname(hostname=hst)
-                    mshort['os_info'] = self.__du.get_os_info(hostname=hst)
+                    mshort['platform'] = self.__du.get_uname(hostname=hst, pyexec='python')
+                    mshort['os_info'] = self.__du.get_os_info(hostname=hst, pyexec='python')
                 machines[hst]['pbs_install_type'] = minstall_type[k]
                 if ((k == 'moms' or k == 'comms') and
                         hst in mpinfo['servers']):

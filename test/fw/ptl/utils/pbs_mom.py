@@ -165,11 +165,11 @@ class WinMoM(MoM):
         
         return dflt_conf
     
-    def parse_pbs_config(self, hostname=None, pbsconf_file=None):
+    def parse_pbs_config(self, hostname=None, file=None):
         """
         """
         # Implementation of parse_file
-        rv = self.get_file_content(hostname, pbsconf_file)
+        rv = self.get_file_content(hostname, file)
         try:
             props = {}
             for l in rv['out']:
@@ -199,7 +199,7 @@ class WinMoM(MoM):
         return rv
 
         
-    def delete_file(self, hostname=None, path=None, runas=None,
+    def delete_file(self, hostname=None, path=None, sudo=False, runas=None,
            recursive=False, force=False, cwd=None, logerr=True,
            as_script=False, level=logging.INFOCLI2):
         """
@@ -254,7 +254,7 @@ class WinMoM(MoM):
                 return False
             cmd += [path]
 
-        ret = self.du.run_cmd(hostname, cmd=cmd, sudo=sudo, logerr=logerr,
+        ret = self.du.run_cmd(hostname, cmd=cmd, logerr=logerr,
                            runas=runas, cwd=cwd, level=level,
                            as_script=as_script)
         if ret['rc'] != 0:
@@ -421,6 +421,7 @@ class WinMoM(MoM):
         instance name or None.
         """
         cmd = 'pbs_mom'
+        self.logger.info("------INside _all_instance_pids-----------------")
         self.get_proc_info(self.hostname, ".*" + cmd + ".*",
                            regexp=True)
         _procs = self.processes.values()
@@ -442,26 +443,13 @@ class WinMoM(MoM):
         with ``_get_pid`` but not with ``_all_instance_pids``
         """
         path = self.path_separator.join([self.pbs_conf['PBS_HOME'], 'mom_priv', 'mom.lock'])
+        self.logger.info("------INside _get_pid; path:%s" %(path))
         rv = self.get_file_content(self.hostname, path)
         if ((rv['rc'] == 0) and (len(rv['out']) > 0)):
             pid = rv['out'][0].strip()
         else:
             pid = None
         return pid
-    
-    def _validate_pid(self):
-        """
-        Get pid and validate
-        :param inst: inst to update pid
-        :type inst: object
-        """
-        for i in range(30):
-            live_pids = self._all_instance_pids()
-            pid = self._get_pid()
-            if live_pids is not None and pid in live_pids:
-                return pid
-            time.sleep(1)
-        return None
     
     def get_stagein_cmd(self, execution_info={}, storage_info={}, asuser=None):
         """
@@ -659,48 +647,20 @@ class WinMoM(MoM):
         if host is None:
             host = self.hostname
         try:
-            if logtype == 'tracejob':
-                if id is None:
-                    return None
-                cmd = [self.path_separator.join([
-                       self.pbs_conf['PBS_EXEC'],
-                       'bin',
-                       'tracejob'])]
-                cmd += [str(id)]
-                lines = self.du.run_cmd(host, cmd)['out']
-                if n != 'ALL':
-                    lines = lines[-n:]
-            else:
-                daystart = time.strftime("%Y%m%d", time.localtime(starttime))
-                dayend = time.strftime("%Y%m%d", time.localtime(endtime))
-                firstday_obj = datetime.datetime.strptime(daystart, '%Y%m%d')
-                lastday_obj = datetime.datetime.strptime(dayend, '%Y%m%d')
-                logval = 'mom_logs'
-                logdir = self.path_separator.join([self.pbs_conf['PBS_HOME'], logval])
-                while firstday_obj <= lastday_obj:
-                    day = firstday_obj.strftime("%Y%m%d")
-                    filename = self.path_separator.join([logdir, day])
-                    self.logger.info("-----Inside log_lines, filename=%s" %(filename))
-                    if n == 'ALL':
-                        day_lines = self.get_file_content(self.hostname, filename)['out']
-                    else:
-                        if tail:
-                            cmd = ['/usr/bin/tail']
-                        else:
-                            cmd = ['/usr/bin/head']
+            daystart = time.strftime("%Y%m%d", time.localtime(starttime))
+            dayend = time.strftime("%Y%m%d", time.localtime(endtime))
+            firstday_obj = datetime.datetime.strptime(daystart, '%Y%m%d')
+            lastday_obj = datetime.datetime.strptime(dayend, '%Y%m%d')
+            logval = 'mom_logs'
+            logdir = self.path_separator.join([self.pbs_conf['PBS_HOME'], logval])
+            while firstday_obj <= lastday_obj:
+                day = firstday_obj.strftime("%Y%m%d")
+                filename = self.path_separator.join([logdir, day])
+                self.logger.info("-----Inside log_lines, filename=%s" %(filename))
+                day_lines = self.get_file_content(self.hostname, filename)['out']
+                lines.extend(day_lines)
+                firstday_obj = firstday_obj + datetime.timedelta(days=1)
 
-                        cmd += ['-n']
-                        cmd += [str(n), filename]
-                        day_lines = self.du.run_cmd(
-                            host, cmd, sudo=sudo,
-                            level=logging.DEBUG2)['out']
-                    lines.extend(day_lines)
-                    firstday_obj = firstday_obj + datetime.timedelta(days=1)
-                    if n == 'ALL':
-                        continue
-                    n = n - len(day_lines)
-                    if n <= 0:
-                        break
         except (Exception, IOError, PtlLogMatchError):
             self.logger.error('error in log_lines ')
             self.logger.error(traceback.print_exc())
@@ -919,14 +879,6 @@ class WinMoM(MoM):
                 self.logger.error('error saving configuration to ' + outfile)
                 return False
         return True
-
-    def load_configuration(self, infile):
-        """
-        load mom configuration from saved file infile
-        """
-        rv = self._load_configuration(infile, MGR_OBJ_NODE)
-        self.signal('-HUP')
-        return rv
 
     def is_cpuset_mom(self):
         """

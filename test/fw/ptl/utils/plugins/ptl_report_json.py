@@ -71,7 +71,7 @@ class PTLJsonData(object):
                 'product_version': data['pbs_version'],
                 'run_id': data['start_time'].strftime('%s'),
                 'test_conf': {},
-                # 'machine_info': data['machinfo'],
+                'machine_info': data['machinfo'],
                 'testsuites': {},
                 'additional_data': {},
                 'test_summary': {
