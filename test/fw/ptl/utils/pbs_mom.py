@@ -182,6 +182,16 @@ class WinMoM(MoM):
         pbs_conf = props
         return pbs_conf
 
+    def get_uname(self, hostname=None, pyexec='python'):
+        """
+        """
+        return super(WinMoM, self).get_uname(hostname, pyexec)
+
+    def get_os_info(self, hostname=None, pyexec='python'):
+        """
+        """
+        return super(WinMoM, self).get_os_info(hostname, pyexec)
+
     def _init_processes(self):
         self.processes = {}
     

@@ -58,6 +58,7 @@ import tempfile
 import threading
 import time
 import traceback
+import platform
 from collections import OrderedDict
 from distutils.version import LooseVersion
 from operator import itemgetter
@@ -4419,6 +4420,69 @@ class PBSService(PBSObject):
         platform independent call to get a temporary directory
         """
         return self.du.get_tempdir(self.hostname)
+    
+    def get_uname(self, hostname=None, pyexec=None):
+        """
+        Get a local or remote platform info in uname format, essentially
+        the value of Python's platform.uname
+        :param hostname: The hostname to query for platform info
+        :type hostname: str or None
+        :param pyexec: A path to a Python interpreter to use to query
+                       a remote host for platform info
+        :type pyexec: str or None
+        For efficiency the value is cached and retrieved from the
+        cache upon subsequent request
+        """
+        uplatform = ' '.join(platform.uname())
+        if hostname is None:
+            hostname = socket.gethostname()
+        if not self.du.is_localhost(hostname):
+            if pyexec is None:
+                pyexec = self.du.which(hostname, 'python3', level=logging.DEBUG2)
+            _cmdstr = '"import platform;'
+            _cmdstr += 'print(\' \'.join(platform.uname()))"'
+            cmd = [pyexec, '-c', _cmdstr]
+            ret = self.du.run_cmd(hostname, cmd=cmd)
+            if ret['rc'] != 0 or len(ret['out']) == 0:
+                _msg = 'Unable to retrieve platform info,'
+                _msg += 'defaulting to local platform'
+                self.logger.warning(_msg)
+            else:
+                uplatform = ret['out'][0]
+        return uplatform
+
+    def get_os_info(self, hostname=None, pyexec=None):
+        """
+        Get a local or remote OS info
+
+        :param hostname: The hostname to query for platform info
+        :type hostname: str or None
+        :param pyexec: A path to a Python interpreter to use to query
+                       a remote host for platform info
+        :type pyexec: str or None
+
+        :returns: a 'str' object containing os info
+        """
+
+        local_info = platform.platform()
+
+        if hostname is None or self.du.is_localhost(hostname):
+            return local_info
+
+        if pyexec is None:
+            pyexec = self.du.which(hostname, 'python3', level=logging.DEBUG2)
+
+        cmd = [pyexec, '-c',
+               '"import platform; print(platform.platform())"']
+        ret = self.du.run_cmd(hostname, cmd=cmd)
+        if ret['rc'] != 0 or len(ret['out']) == 0:
+            self.logger.warning("Unable to retrieve OS info, defaulting "
+                                "to local")
+            ret_info = local_info
+        else:
+            ret_info = ret['out'][0]
+
+        return ret_info
 
     def __str__(self):
         return (self.__class__.__name__ + ' ' + self.hostname + ' config ' +

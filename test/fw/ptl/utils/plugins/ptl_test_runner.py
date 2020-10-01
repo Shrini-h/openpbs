@@ -836,23 +836,39 @@ class PTLTestRunner(Plugin):
                 logger.error(_msg)
                 return _msg
 
-    def check_hardware_status_and_core_files(self):
+    def check_hardware_status_and_core_files(self, test):
         """
         function checks hardware status and core files
         every 5 minutes
         """
         du = DshUtils()
-        self.hardware_report_timer = Timer(
-            300, self.check_hardware_status_and_core_files)
-        self.hardware_report_timer.start()
         systems = list(self.param_dict['servers'])
         systems.extend(self.param_dict['moms'])
         systems.extend(self.param_dict['comms'])
         systems = list(set(systems))
+
+        if hasattr(test, 'test'):
+            _test = test.test
+        elif hasattr(test, 'context'):
+            _test = test.context
+        else:
+            return None
+
+        for name in ['servers','moms','comms','clients']:
+            mlist = None
+            if (hasattr(_test, name) and
+                    (getattr(_test, name, None) is not None)):
+                mlist = getattr(_test, name).values()
+            if mlist:
+                for mc in mlist:
+                    platform = mc.platform
+                    if platform not in ['linux', 'shasta', 'cray'] and mc.hostname in systems:
+                        systems.remove(mc.hostname)
+        
+        self.hardware_report_timer = Timer(
+            300, self.check_hardware_status_and_core_files, args=(test,))
+        self.hardware_report_timer.start()
         for hostname in systems:
-            platform = du.get_platform(hostname, pyexec='python')
-            if platform != 'linux' or platform != 'shasta' or platform != 'cray':
-                return
             hr = SystemInfo()
             hr.get_system_info(hostname)
             # monitors disk
@@ -948,7 +964,7 @@ class PTLTestRunner(Plugin):
             self.result.startTest(test)
             raise SkipTest(rv)
         # function report hardware status and core files
-        self.check_hardware_status_and_core_files()
+        self.check_hardware_status_and_core_files(test)
 
         def timeout_handler(signum, frame):
             raise TimeOut('Timed out after %s second' % timeout)
