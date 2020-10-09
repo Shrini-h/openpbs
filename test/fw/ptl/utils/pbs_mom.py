@@ -452,14 +452,17 @@ class WinMoM(MoM):
         the PID of the last running instance can be retrieved
         with ``_get_pid`` but not with ``_all_instance_pids``
         """
-        path = self.path_separator.join([self.pbs_conf['PBS_HOME'], 'mom_priv', 'mom.lock'])
-        self.logger.info("------INside _get_pid; path:%s" %(path))
-        rv = self.get_file_content(self.hostname, path)
-        if ((rv['rc'] == 0) and (len(rv['out']) > 0)):
-            pid = rv['out'][0].strip()
-        else:
-            pid = None
-        return pid
+
+        cmd = 'tasklist /FO csv | find /i \"pbs_mom.exe\"'
+        ret = self.du.run_cmd(self.hostname, cmd=cmd)
+        self.logger.info("-----Inside _get_pid-----ret:%s" %(ret))
+        if ret['rc'] == 0:
+            s = ret['out'][0]
+            pid = s.split(",")[1]
+            pid = pid.replace('"', '')
+            self.logger.info("-----Inside _get_pid-----pid:%s" %(pid))
+            return pid
+        return None
     
     def get_stagein_cmd(self, execution_info={}, storage_info={}, asuser=None):
         """
@@ -535,13 +538,33 @@ class WinMoM(MoM):
         ret = self.du.run_cmd(hostname, cmd=cmd)
         if ret['rc'] == 0:
             for rv in ret['out']:
-                self.logger.info("-----Inside is_suspended_state-----rv:%s" %(rv))
+                # self.logger.info("-----Inside is_suspended_state-----rv:%s" %(rv))
                 if rv.startswith('WaitReason :') and rv.split(':')[1] != ' Suspended':
                     return False
         else:
             self.logger.error("Could not get process state from Mom")
             return False
         return True
+
+    def _isUp(self, inst):
+        """
+        returns True if service is up and False otherwise
+        """
+
+        #cmd = 'tasklist /FO csv | find /i \"pbs_mom.exe\"'
+        cmd = 'sc query pbs_mom | find /I \"state\"'
+        ret = self.du.run_cmd(self.hostname, cmd=cmd)
+        self.logger.info("-----Inside _isUp-----ret:%s" %(ret))
+        if ret['rc'] == 0:
+            self.logger.info("-----Inside _isUp-----ret['out'][0].find:%s" %(ret['out'][0].find("RUNNING")))
+            if ret['out'][0].find("RUNNING"):
+                return True
+            else:
+                return False
+        return False
+    
+    def isUp(self, max_attempts=None):
+        return self._isUp(self)
 
     def _signal(self, sig, inst=None, procname=None):
         """
@@ -557,31 +580,29 @@ class WinMoM(MoM):
         :type procname: str or None
         """
 
-        pid = self._get_pid(inst=inst)
-
-        cmd = ['taskkill', '/F', '/PID']
-        if procname is not None:
-            pi = self.get_proc_info(self.hostname, procname)
-            if pi is not None and pi.values() and list(pi.values())[0]:
-                for _p in list(pi.values())[0]:
-                    cmd += [_p.pid]
-                    if sig is '-HUP':
-                        cmd += ['&&', 'net start pbs_mom']
-                    ret = self.du.run_cmd(self.hostname, cmd)
-                return ret
-
-        if pid is None:
-            return {'rc': 0, 'err': '', 'out': 'no pid to signal'}
-
-        cmd += [pid]
+        #pid = self._get_pid(inst=inst)
+# 
+        # cmd = ['taskkill', '/F', '/PID']
+        # if procname is not None:
+            # pi = self.get_proc_info(self.hostname, procname)
+            # if pi is not None and pi.values() and list(pi.values())[0]:
+                # for _p in list(pi.values())[0]:
+                    # cmd += [_p.pid]
+                    # if sig is '-HUP':
+                        # cmd += ['&&', 'net start pbs_mom']
+                    # ret = self.du.run_cmd(self.hostname, cmd)
+                # return ret
+# 
+        # if pid is None:
+            # return {'rc': 0, 'err': '', 'out': 'no pid to signal'}
+# 
+        # cmd += [pid]
+        cmd = ['net stop pbs_mom']
         if sig == '-HUP':
             cmd += ['&&', 'net start pbs_mom']
 
         ret = self.du.run_cmd(self.hostname, cmd)
-        if ret['rc'] == 0:
-            # Doing this because of read permission error of mom.lock file
-            cmd = ['net stop pbs_mom && net start pbs_mom']
-            ret = self.du.run_cmd(self.hostname, cmd)
+
         return ret
         
 
@@ -605,17 +626,17 @@ class WinMoM(MoM):
         """
         return self._all_instance_pids(inst=self)
 
-    def restart(self):
-        """
-        Restart the PBS mom
-        """
+    # def restart(self):
+        # """
+        # Restart the PBS mom
+        # """
         # if self.isUp():
             # if not self.stop():
                 # return False
         # return self.start()
         # We can add above logic when the permission error of lock file is solved
-        cmd = ['net stop pbs_mom && net start pbs_mom']
-        self.du.run_cmd(self.hostname, cmd=cmd)
+        # cmd = ['net stop pbs_mom && net start pbs_mom']
+        # self.du.run_cmd(self.hostname, cmd=cmd)
 
     def log_lines(self, logtype, id=None, n=50, tail=True, starttime=None,
                   endtime=None, host=None):
