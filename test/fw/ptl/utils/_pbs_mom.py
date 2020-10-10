@@ -262,7 +262,7 @@ class MoM(PBSService):
         if max_attempts is None:
             max_attempts = self.ptl_conf['max_attempts']
         for _ in range(max_attempts):
-            rv = super(MoM, self)._isUp(self)
+            rv = self._isUp(self)
             if rv:
                 break
             time.sleep(1)
@@ -286,19 +286,19 @@ class MoM(PBSService):
         Send signal to PBS mom
         """
         self.logger.info(self.logprefix + 'sent signal ' + sig)
-        return super(MoM, self)._signal(sig, inst=self)
+        return self._signal(sig, inst=self)
 
     def get_pid(self):
         """
         Get the PBS mom pid
         """
-        return super(MoM, self)._get_pid(inst=self)
+        return self._get_pid(inst=self)
 
     def all_instance_pids(self):
         """
         Get all pids of a instance
         """
-        return super(MoM, self)._all_instance_pids(inst=self)
+        return self._all_instance_pids(inst=self)
 
     def start(self, args=None, launcher=None):
         """
@@ -617,7 +617,7 @@ class MoM(PBSService):
         if len(pbs_conf_val) != len(new_pbsconf):
             restart_mom = True
         # Check if existing pbs.conf has correct ownership
-        dest = self.du.get_pbs_conf_file(mom.hostname)
+        dest = self.mom.get_pbs_conf_file(mom.hostname)
         (cf_uid, cf_gid) = (os.stat(dest).st_uid, os.stat(dest).st_gid)
         if cf_uid != 0 or cf_gid > 10:
             restart_mom = True

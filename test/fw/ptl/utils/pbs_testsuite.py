@@ -1074,7 +1074,15 @@ class PBSTestSuite(unittest.TestCase):
             # existing pbs.conf
             keys_to_delete = []
             for conf in new_pbsconf:
-                if conf in pbs_conf_val:
+                if new_pbsconf[conf]:
+                    if conf in pbs_conf_val and new_pbsconf[conf] != pbs_conf_val[conf]:
+                        restart_pbs = True
+                    elif conf not in pbs_conf_val:
+                        restart_pbs = True
+                    continue
+                elif conf in pbs_conf_val:
+                    new_pbsconf[conf] = pbs_conf_val[conf]
+                elif conf in pbs_conf_val:
                     new_pbsconf[conf] = pbs_conf_val[conf]
                 else:
                     # existing pbs.conf doesn't have a default variable set
@@ -1167,7 +1175,14 @@ class PBSTestSuite(unittest.TestCase):
             # existing pbs.conf
             keys_to_delete = []
             for conf in new_pbsconf:
-                if conf in pbs_conf_val:
+                
+                if new_pbsconf[conf]:
+                    if conf in pbs_conf_val and new_pbsconf[conf] != pbs_conf_val[conf]:
+                        restart_pbs = True
+                    elif conf not in pbs_conf_val:
+                        restart_pbs = True
+                    continue
+                elif conf in pbs_conf_val:
                     new_pbsconf[conf] = pbs_conf_val[conf]
                 else:
                     # existing pbs.conf doesn't have a default variable set
@@ -1333,6 +1348,8 @@ class PBSTestSuite(unittest.TestCase):
             "PBS_LOG_HIGHRES_TIMESTAMP": None
         }
 
+        self._revert_pbsconf_mom(primary_server, vals_to_set)
+
         server_vals_to_set = copy.deepcopy(vals_to_set)
 
         server_vals_to_set["PBS_DAEMON_SERVICE_USER"] = None
@@ -1340,8 +1357,6 @@ class PBSTestSuite(unittest.TestCase):
             server_vals_to_set["PBS_PUBLIC_HOST_NAME"] = None
 
         self._revert_pbsconf_server(server_vals_to_set)
-
-        self._revert_pbsconf_mom(primary_server, vals_to_set)
 
         self._revert_pbsconf_comm(primary_server, vals_to_set)
 

@@ -100,7 +100,7 @@ class WinMoM(MoM):
 
         self.du = DshUtils()
         pbsconf_file = self.get_pbs_conf_file(hostname=name)
-        pbs_conf = self.parse_pbs_config(name, pbsconf_file)
+        pbs_conf = self.parse_pbs_conf(name, pbsconf_file)
         # self.logger.info("-----Inside Mom's _init_; pbsconf_file:%s" %(pbsconf_file))
         # self.logger.info("-----Inside Mom's _init_; pbs_conf:%s" %(pbs_conf))
 
@@ -165,7 +165,7 @@ class WinMoM(MoM):
         
         return dflt_conf
     
-    def parse_pbs_config(self, hostname=None, file=None):
+    def parse_pbs_conf(self, hostname=None, file=None):
         """
         """
         # Implementation of parse_file
@@ -455,12 +455,12 @@ class WinMoM(MoM):
 
         cmd = 'tasklist /FO csv | find /i \"pbs_mom.exe\"'
         ret = self.du.run_cmd(self.hostname, cmd=cmd)
-        self.logger.info("-----Inside _get_pid-----ret:%s" %(ret))
+        # self.logger.info("-----Inside _get_pid-----ret:%s" %(ret))
         if ret['rc'] == 0:
             s = ret['out'][0]
             pid = s.split(",")[1]
             pid = pid.replace('"', '')
-            self.logger.info("-----Inside _get_pid-----pid:%s" %(pid))
+            # self.logger.info("-----Inside _get_pid-----pid:%s" %(pid))
             return pid
         return None
     
@@ -550,7 +550,7 @@ class WinMoM(MoM):
         """
         returns True if service is up and False otherwise
         """
-
+        
         #cmd = 'tasklist /FO csv | find /i \"pbs_mom.exe\"'
         cmd = 'sc query pbs_mom | find /I \"state\"'
         ret = self.du.run_cmd(self.hostname, cmd=cmd)
@@ -562,9 +562,6 @@ class WinMoM(MoM):
             else:
                 return False
         return False
-    
-    def isUp(self, max_attempts=None):
-        return self._isUp(self)
 
     def _signal(self, sig, inst=None, procname=None):
         """
@@ -604,39 +601,6 @@ class WinMoM(MoM):
         ret = self.du.run_cmd(self.hostname, cmd)
 
         return ret
-        
-
-    def signal(self, sig):
-        """
-        Send signal to PBS mom
-        """
-        self.logger.info(self.logprefix + 'sent signal ' + sig)
-        return self._signal(sig)
-
-    def get_pid(self):
-        """
-        Get the PBS mom pid
-        """
-        # Windows Implementation
-        return self._get_pid()
-
-    def all_instance_pids(self):
-        """
-        Get all pids of a instance
-        """
-        return self._all_instance_pids(inst=self)
-
-    # def restart(self):
-        # """
-        # Restart the PBS mom
-        # """
-        # if self.isUp():
-            # if not self.stop():
-                # return False
-        # return self.start()
-        # We can add above logic when the permission error of lock file is solved
-        # cmd = ['net stop pbs_mom && net start pbs_mom']
-        # self.du.run_cmd(self.hostname, cmd=cmd)
 
     def log_lines(self, logtype, id=None, n=50, tail=True, starttime=None,
                   endtime=None, host=None):
@@ -856,12 +820,11 @@ class WinMoM(MoM):
         
         # Setting this to False for now. We might remove this whole function 
         restart_mom = False
-        self.logger.info("----Inside revert_mom_pbs_conf; new_pbsconf`:%s" %(new_pbsconf))
-        server_conf = {'PBS_SUPPORTED_AUTH_METHODS' : 'pwd,resvport'}
-        ret = self.du.set_pbs_config(self.server.hostname, append=True, confs=server_conf)
-        self.server.pbs_conf.update(server_conf)
 
-        self.server.pi.restart()
+        # Adding this to pass to server or comm's conf file
+        vals_to_set["PBS_SUPPORTED_AUTH_METHODS"] = 'pwd,resvport'
+
+
         if restart_mom:
             self.du.set_pbs_config(self.hostname, fin=self.pbs_conf_file, confs=new_pbsconf,
                                    append=False)
@@ -948,9 +911,9 @@ class WinMoM(MoM):
                   and None otherwise
         """
         try:
-            mconf = os.path.join(self.pbs_conf['PBS_HOME'], 'mom_priv',
-                                 'config')
-            ret = self.du.cat(self.hostname, mconf, sudo=True)
+            mconf = self.path_separator.join([self.pbs_conf['PBS_HOME'], 'mom_priv',
+                                 'config'])
+            ret = self.get_file_content(self.hostname, mconf)
             if ret['rc'] != 0:
                 self.logger.error('error parsing configuration file')
                 return None
@@ -1112,27 +1075,6 @@ class WinMoM(MoM):
                         rv = True
         return rv
 
-    def has_pelog(self, filename=None):
-        """
-        Check for prologue and epilogue
-        """
-        _has_pro = False
-        _has_epi = False
-        phome = self.pbs_conf['PBS_HOME']
-        prolog = self.path_separator.join([phome, 'mom_priv', 'prologue'])
-        epilog = self.path_separator.join([phome, 'mom_priv', 'epilogue'])
-        if self.du.isfile(self.hostname, path=prolog, sudo=True):
-            _has_pro = True
-        if filename == 'prologue':
-            return _has_pro
-        if self.du.isfile(self.hostname, path=epilog, sudo=True):
-            _has_epi = True
-        if filename == 'epilogue':
-            return _has_pro
-        if _has_epi or _has_pro:
-            return True
-        return False
-
     def delete_pelog(self):
         """
         Delete any prologue and epilogue files that may have been
@@ -1148,51 +1090,6 @@ class WinMoM(MoM):
             self.logger.error('problem deleting prologue/epilogue')
             # we don't bail because the problem may be that files did not
             # exist. Let tester fix the issue
-        return ret
-
-    def create_pelog(self, body=None, src=None, filename=None):
-        """
-        create ``prologue`` and ``epilogue`` files, functionality
-        accepts either a body of the script or a source file.
-
-        :returns: True on success and False on error
-        """
-
-        if self.has_snap:
-            _msg = 'MoM is in loaded from snap so bypassing pelog creation'
-            self.logger.info(_msg)
-            return False
-
-        if (src is None and body is None) or (filename is None):
-            self.logger.error('file and body of script are required')
-            return False
-
-        pelog = os.path.join(self.pbs_conf['PBS_HOME'], 'mom_priv', filename)
-
-        self.logger.info(self.logprefix +
-                         ' creating ' + filename + ' with body\n' + '---')
-        if body is not None:
-            self.logger.info(body)
-            src = self.du.create_temp_file(prefix='pbs-pelog', body=body)
-        elif src is not None:
-            with open(src) as _b:
-                self.logger.info("\n".join(_b.readlines()))
-        self.logger.info('---')
-
-        ret = self.du.run_copy(self.hostname, src=src, dest=pelog,
-                               preserve_permission=False, sudo=True)
-        if body is not None:
-            os.remove(src)
-        if ret['rc'] != 0:
-            self.logger.error('error creating pelog ')
-            return False
-
-        ret = self.du.chown(self.hostname, path=pelog, uid=0, gid=0, sudo=True,
-                            logerr=False)
-        if not ret:
-            self.logger.error('error chowning pelog to root')
-            return False
-        ret = self.du.chmod(self.hostname, path=pelog, mode=0o755, sudo=True)
         return ret
 
 
